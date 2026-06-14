@@ -1,0 +1,7 @@
+# Dependências
+node_modules/
+.DS_Store
+
+
+# Logs e ambiente
+.env
