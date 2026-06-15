@@ -1,0 +1,41 @@
+{
+  "chart": {
+    "title": "Share of CO₂ emissions embedded in trade",
+    "subtitle": "Exported or imported emissions as a percentage of domestic production emissions. Positive values (red) represent net importers of CO₂. Negative values (blue) represent net exporters of CO₂.",
+    "citation": "Global Carbon Budget (2025)",
+    "originalChartUrl": "https://ourworldindata.org/grapher/share-co2-embedded-in-trade?v=1&csvType=full&useColumnShortNames=false",
+    "selection": [
+      "Sweden",
+      "Norway",
+      "United States",
+      "United Kingdom",
+      "China",
+      "India"
+    ]
+  },
+  "columns": {
+    "Share of annual CO₂ emissions embedded in trade": {
+      "titleShort": "Share of annual CO₂ emissions embedded in trade",
+      "titleLong": "Share of annual CO₂ emissions embedded in trade",
+      "descriptionShort": "Annual net carbon dioxide (CO₂) emissions embedded in trade, measured as a percentage of emissions of CO₂.",
+      "descriptionKey": [
+        "Net CO₂ emissions embedded in trade is the net of CO₂ which is imported or exported via traded goods with an economy. A positive value denotes a country or region is a net importer of CO₂ emissions; a negative value indicates a country is a net exporter.",
+        "Emissions from international aviation and shipping are not included in the data for any individual country or region. They are only counted in the global total."
+      ],
+      "descriptionProcessing": "- Global emissions are converted from tonnes of carbon to tonnes of carbon dioxide (CO₂) using a factor of 3.664. This is the conversion factor [recommended by the Global Carbon Project](https://globalcarbonbudgetdata.org/downloads/jGJH0-data/Global+Carbon+Budget+v2024+Dataset+Descriptions.pdf). It reflects that one tonne of carbon, when fully oxidized, forms 3.664 tonnes of CO₂, based on the relative molecular weights of carbon and oxygen in CO₂.\n- Emissions from the 1991 Kuwaiti oil fires are included in Kuwait's emissions for that year.",
+      "shortUnit": "%",
+      "unit": "%",
+      "timespan": "1990-2024",
+      "type": "Numeric",
+      "owidVariableId": 1119921,
+      "shortName": "pct_traded_emissions",
+      "lastUpdated": "2025-11-13",
+      "nextUpdate": "2026-11-13",
+      "citationShort": "Global Carbon Budget (2025) – with major processing by Our World in Data",
+      "citationLong": "Global Carbon Budget (2025) – with major processing by Our World in Data. “Share of annual CO₂ emissions embedded in trade” [dataset]. Global Carbon Project, “Global Carbon Budget v15” [original data].",
+      "fullMetadata": "https://api.ourworldindata.org/v1/indicators/1119921.metadata.json"
+    }
+  },
+  "dateDownloaded": "2026-06-15",
+  "activeFilters": {}
+}
