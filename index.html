@@ -1,75 +1,54 @@
 <!DOCTYPE html>
-<html lang="en">
-  <head>
-    <meta charset="UTF-8" />
-    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-    <title>CO2 Emissions Dashboard</title>
+<html lang="pt-br">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Visualização de Emissões CO2</title>
     <style>
-      body {
-        font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
-        margin: 20px;
-        background-color: #f8f9fa;
-        color: #333;
-      }
-      .main-container {
-        display: flex;
-        flex-direction: column;
-        align-items: center;
-      }
-      .data-table {
-        width: 100%;
-        max-width: 900px;
-        border-collapse: collapse;
-        margin-top: 20px;
-        background-color: #ffffff;
-        border: 1px solid #dee2e6;
-        box-shadow: 0 4px 6px rgba(0,0,0,0.05);
-      }
-      .data-table th,
-      .data-table td {
-        padding: 12px 14px;
-        border: 1px solid #dee2e6;
-        text-align: left;
-      }
-      .data-table th {
-        background-color: #f1f3f5;
-        color: #212529;
-      }
-      .data-table tbody tr:hover {
-        background-color: #f8f9fa;
-      }
-
-      /* Map tooltip and svg styles (required) */
-      #tooltip {
-        position: absolute;
-        opacity: 0;
-        background: white;
-        padding: 10px;
-        border: 1px solid #ccc;
-        border-radius: 4px;
-        pointer-events: none;
-        box-shadow: 0 2px 4px rgba(0,0,0,0.1);
-        font-family: sans-serif;
-        z-index: 1000;
-      }
-
-      #map-container svg {
-        width: 100%;
-        height: auto;
-        max-height: 600px;
-      }
-
-      .country-path {
-        transition: fill 0.2s, stroke 0.2s;
-      }
+        body { font-family: 'Inter', system-ui, sans-serif; margin: 0; background: #121212; color: #e0e0e0; display: flex; flex-direction: column; min-height: 100vh; }
+        .header { padding: 1rem 2rem; background: #252525; border-bottom: 1px solid #333; display: flex; justify-content: space-between; align-items: center; }
+        .dashboard-grid { display: grid; grid-template-columns: 1fr 1fr; grid-template-rows: auto auto; gap: 20px; padding: 20px; flex-grow: 1; overflow-y: auto; }
+        .card { background: #252525; border-radius: 8px; border: 1px solid #333; padding: 15px; display: flex; flex-direction: column; position: relative; }
+        #chart-container { grid-column: span 1; min-height: 450px; }
+        .controls { display: flex; align-items: center; gap: 15px; background: #333; padding: 8px 15px; border-radius: 20px; }
+        input[type="range"] { accent-color: #e41a1c; width: 200px; }
+        button { background: #e41a1c; border: none; color: white; padding: 5px 15px; border-radius: 15px; cursor: pointer; font-weight: bold; transition: opacity 0.2s; }
+        button:hover { opacity: 0.8; }
+        .map-tooltip { position: absolute; background: rgba(0,0,0,0.9); border: 1px solid #444; padding: 8px; border-radius: 4px; pointer-events: none; z-index: 1000; font-size: 12px; }
+        h1 { margin: 0; font-size: 1.2rem; font-weight: 500; }
+        .card-title { font-size: 0.85rem; text-transform: uppercase; color: #aaa; margin-bottom: 15px; letter-spacing: 1px; border-left: 3px solid #e41a1c; padding-left: 10px; }
+        svg { width: 100%; height: 100%; }
+        .legend-container { margin-top: auto; padding-top: 10px; }
+        .axis-label { font-size: 11px; fill: #888; }
     </style>
-  </head>
-  <body>
-    <div class="main-container">
-      <h2>Share of global cumulative CO₂ emissions</h2>
-      <div id="map-container"></div>
-      <div id="tooltip"></div>
+</head>
+<body>
+    <div class="header">
+        <h1>Monitor de Emissões Globais (1750-2021)</h1>
+        <div class="controls">
+            <button id="playButton">PLAY</button>
+            <label for="yearSlider">Ano: </label>
+            <input type="range" id="yearSlider" min="1750" max="2021" value="2021">
+            <span id="yearValue" style="font-weight: bold; color: #e41a1c;">2021</span>
+        </div>
     </div>
+
+    <div class="dashboard-grid">
+        <div id="chart-container" class="card">
+            <div class="card-title">Distribuição Espacial (Where)</div>
+            <div id="map-legend" class="legend-container"></div>
+        </div>
+        <div id="scatter-plot-container" class="card">
+            <div class="card-title">Correlação: Acumulado vs. Tendência Atual (What)</div>
+        </div>
+        <div id="line-chart-container" class="card">
+            <div class="card-title">Evolução Temporal: <span id="countryName">USA</span> (When)</div>
+        </div>
+        <div id="bar-chart-container" class="card">
+            <div class="card-title">Ranking de Impacto (Who)</div>
+        </div>
+    </div>
+
     <script type="module" src="/src/main.js"></script>
-  </body>
+</body>
 </html>
