@@ -5,6 +5,7 @@ import { loadChoroplethMap, updateTimeSeriesChart, updateBarChart, updateScatter
 let conn;
 let appState = {
     selectedCountry: 'USA', // Iniciar com um país que possui dados históricos extensos
+    selectedCountries: ['USA'],
     selectedYear: 2021,
     minYear: 1750,
     maxYear: 2021,
@@ -12,6 +13,152 @@ let appState = {
     seriesData: [],
     isPlaying: false
 };
+
+const queryCache = {
+    mapData: new Map(),
+    topEmissions: new Map(),
+    seriesData: new Map()
+};
+
+// Função auxiliar para validar conexão com base de dados
+function ensureDatabase() {
+    if (!conn) {
+        throw new Error('Conexão com base de dados não disponível. Recarregue a página.');
+    }
+}
+
+function getCacheKey(key, ...params) {
+    return `${key}:${params.join(':')}`;
+}
+
+async function getMapData(year) {
+    const cacheKey = getCacheKey('mapData', year);
+    if (queryCache.mapData.has(cacheKey)) {
+        return queryCache.mapData.get(cacheKey);
+    }
+
+    const result = await conn.query(`
+        SELECT Entity, Code, Emission, Delta
+        FROM emissions
+        WHERE Year = ${year};
+    `);
+
+    const data = result.toArray().map(r => r.toJSON());
+    queryCache.mapData.set(cacheKey, data);
+    return data;
+}
+
+async function getTopEmissions(year) {
+    const cacheKey = getCacheKey('topEmissions', year);
+    if (queryCache.topEmissions.has(cacheKey)) {
+        return queryCache.topEmissions.get(cacheKey);
+    }
+
+    const result = await conn.query(`
+        SELECT Entity, Emission
+        FROM emissions
+        WHERE Year = ${year}
+        ORDER BY Emission DESC LIMIT 10;
+    `);
+
+    const data = result.toArray().map(r => r.toJSON());
+    queryCache.topEmissions.set(cacheKey, data);
+    return data;
+}
+
+async function getSeriesData(countryCode) {
+    const cacheKey = getCacheKey('seriesData', countryCode);
+    if (queryCache.seriesData.has(cacheKey)) {
+        return queryCache.seriesData.get(cacheKey);
+    }
+
+    const result = await conn.query(`
+        SELECT Year, Emission, Entity, Code
+        FROM emissions
+        WHERE Code = '${countryCode}'
+        ORDER BY Year ASC;
+    `);
+
+    const data = result.toArray().map(r => r.toJSON());
+    queryCache.seriesData.set(cacheKey, data);
+    return data;
+}
+
+async function getSeriesDataList(countryCodes) {
+    const promises = countryCodes.map(code => getSeriesData(code));
+    const series = await Promise.all(promises);
+    return series.map(data => ({
+        code: data.length > 0 ? data[0].Code : null,
+        entity: data.length > 0 ? data[0].Entity : data[0]?.Code || 'Sem dados',
+        values: data.map(d => ({ Year: d.Year, Emission: d.Emission }))
+    }));
+}
+
+function downloadURI(uri, name) {
+    const link = document.createElement('a');
+    link.href = uri;
+    link.download = name;
+    document.body.appendChild(link);
+    link.click();
+    document.body.removeChild(link);
+}
+
+function exportCSV(data, filename) {
+    if (!data || !data.length) {
+        alert('Nenhum dado disponível para exportar.');
+        return;
+    }
+
+    const headers = Object.keys(data[0]);
+    const rows = data.map(row => headers.map(field => {
+        const value = row[field];
+        return typeof value === 'string' ? `"${value.replace(/"/g, '""')}"` : value;
+    }).join(','));
+
+    const csvContent = [headers.join(','), ...rows].join('\n');
+    const blob = new Blob([csvContent], { type: 'text/csv;charset=utf-8;' });
+    const url = URL.createObjectURL(blob);
+    downloadURI(url, filename);
+    URL.revokeObjectURL(url);
+}
+
+async function exportLineChartPNG() {
+    const svgElement = document.querySelector('#line-chart-container svg');
+    if (!svgElement) {
+        alert('Gráfico não disponível para exportar.');
+        return;
+    }
+
+    const serializer = new XMLSerializer();
+    const svgString = serializer.serializeToString(svgElement.cloneNode(true));
+    const svgBlob = new Blob([svgString], { type: 'image/svg+xml;charset=utf-8' });
+    const url = URL.createObjectURL(svgBlob);
+
+    const image = new Image();
+    image.onload = () => {
+        const canvas = document.createElement('canvas');
+        canvas.width = svgElement.viewBox.baseVal.width || svgElement.clientWidth;
+        canvas.height = svgElement.viewBox.baseVal.height || svgElement.clientHeight;
+        const context = canvas.getContext('2d');
+        context.fillStyle = '#121212';
+        context.fillRect(0, 0, canvas.width, canvas.height);
+        context.drawImage(image, 0, 0);
+        URL.revokeObjectURL(url);
+        canvas.toBlob(blob => {
+            if (blob) {
+                const pngUrl = URL.createObjectURL(blob);
+                downloadURI(pngUrl, `line-chart-${appState.selectedYear}.png`);
+                URL.revokeObjectURL(pngUrl);
+            }
+        }, 'image/png');
+    };
+    image.onerror = (e) => {
+        console.error('Erro ao converter SVG para PNG', e);
+        alert('Não foi possível exportar o PNG.');
+    };
+    image.src = url;
+}
+
 
 // Inicialização do banco de dados e carga do CSV
 async function initDatabase() {
@@ -40,6 +187,13 @@ async function initDatabase() {
             ORDER BY Year ASC;
         `);
         
+        // Criar índices para otimizar queries
+        await conn.query(`
+            CREATE INDEX IF NOT EXISTS idx_emissions_code ON emissions(Code);
+            CREATE INDEX IF NOT EXISTS idx_emissions_year ON emissions(Year);
+            CREATE INDEX IF NOT EXISTS idx_emissions_code_year ON emissions(Code, Year);
+        `);
+        
         const yearRes = await conn.query('SELECT MAX(Year) as maxYear FROM emissions');
         const maxVal = yearRes.toArray();
         if (maxVal.length > 0) {
@@ -51,33 +205,41 @@ async function initDatabase() {
         console.log("Banco de dados e estado inicial prontos.");
     } catch (e) {
         console.error("Erro na inicialização:", e);
+        // Mostrar erro ao utilizador
+        const loader = document.getElementById('loading-indicator');
+        if (loader) {
+            loader.innerHTML = `
+                <div class="loading-container">
+                    <h2 style="color: #f44;">Erro ao Carregar</h2>
+                    <p>${e.message}</p>
+                    <button onclick="location.reload()" style="margin-top: 20px; padding: 10px 20px; background: #e41a1c; color: white; border: none; border-radius: 5px; cursor: pointer;">Recarregar Página</button>
+                </div>
+            `;
+        }
     }
 }
 
 async function updateDashboard() {
-    // Busca integrada para Mapa e Scatter Plot
-    const sqlAnalytics = `
-        SELECT Entity, Code, Emission, Delta
-        FROM emissions
-        WHERE Year = ${appState.selectedYear};
-    `;
+    try {
+        ensureDatabase();
 
-    const sqlBar = `
-        SELECT Entity, Emission 
-        FROM emissions 
-        WHERE Year = ${appState.selectedYear}
-        ORDER BY Emission DESC LIMIT 10;
-    `;
+        appState.mapData = await getMapData(appState.selectedYear);
+        const topEmissions = await getTopEmissions(appState.selectedYear);
 
-    const result = await conn.query(sqlAnalytics);
-    const barResult = await conn.query(sqlBar);
+        await loadChoroplethMap(appState.mapData, handleCountrySelection);
+        updateBarChart(topEmissions);
+        updateScatterPlot(appState.mapData, handleCountrySelection);
 
-    appState.mapData = result.toArray().map(r => r.toJSON());
-    const topEmissions = barResult.toArray().map(r => r.toJSON());
-    
-    await loadChoroplethMap(appState.mapData, handleCountrySelection);
-    updateBarChart(topEmissions);
-    updateScatterPlot(appState.mapData, handleCountrySelection);
+        await updateCountrySeries();
+    } catch (error) {
+        console.error('Erro ao atualizar dashboard:', error);
+        const container = document.getElementById('chart-container');
+        if (container) {
+            container.innerHTML = `<div style="color: #f44; padding: 20px;">
+                <strong>Erro:</strong> ${error.message}
+            </div>`;
+        }
+    }
 }
 
 function togglePlay() {
@@ -108,44 +270,164 @@ function updateUIFromState() {
     yearDisplay.textContent = appState.selectedYear;
 }
 
-async function handleCountrySelection(countryCode) {
-    if (appState.selectedCountry === countryCode) return;
+function toggleCountrySelection(countryCode) {
+    const currentIndex = appState.selectedCountries.indexOf(countryCode);
+    if (currentIndex >= 0) {
+        if (appState.selectedCountries.length > 1) {
+            appState.selectedCountries.splice(currentIndex, 1);
+        }
+    } else {
+        appState.selectedCountries.push(countryCode);
+    }
     appState.selectedCountry = countryCode;
+}
 
-    // Consulta focada na série histórica do país selecionado
-    // Adicionamos 'Entity' para capturar o nome amigável do país
-    const sqlSeries = `
-        SELECT Year, Emission, Entity
+async function loadAvailableCountries() {
+    ensureDatabase();
+    const result = await conn.query(`
+        SELECT DISTINCT Code, Entity
         FROM emissions
-        WHERE Code = '${countryCode}'
-        ORDER BY Year ASC;
-    `;
+        ORDER BY Entity ASC;
+    `);
+    return result.toArray().map(r => r.toJSON());
+}
 
-    const result = await conn.query(sqlSeries);
-    appState.seriesData = result.toArray().map(r => r.toJSON());
-    
-    // Melhoria de Legibilidade: Usamos o nome completo da entidade no título, não o código.
-    const name = appState.seriesData.length > 0 ? appState.seriesData[0].Entity : "Sem dados";
-    document.getElementById('countryName').textContent = name;
+function populateCountrySelect(countries) {
+    const select = document.getElementById('countrySelect');
+    if (!select) return;
+    select.innerHTML = '';
 
-    updateTimeSeriesChart(appState.seriesData, countryCode);
+    countries.forEach(country => {
+        const option = document.createElement('option');
+        option.value = country.Code;
+        option.textContent = `${country.Entity} (${country.Code})`;
+        if (appState.selectedCountries.includes(country.Code)) {
+            option.selected = true;
+        }
+        select.appendChild(option);
+    });
+}
+
+async function updateCountrySeries() {
+    const selected = appState.selectedCountries.length > 0 ? appState.selectedCountries : [appState.selectedCountry];
+    const seriesList = await getSeriesDataList(selected);
+    const names = seriesList.map(series => series.entity).filter(Boolean);
+    document.getElementById('countryName').textContent = names.length ? names.join(' / ') : 'Nenhum país selecionado';
+    updateTimeSeriesChart(seriesList);
+}
+
+function exportSelectedSeriesCSV() {
+    const selected = appState.selectedCountries.length > 0 ? appState.selectedCountries : [appState.selectedCountry];
+    if (!selected.length) {
+        alert('Selecione pelo menos um país para exportar.');
+        return;
+    }
+
+    getSeriesDataList(selected).then(seriesList => {
+        const rows = seriesList.flatMap(series => series.values.map(point => ({
+            Country: series.entity,
+            Code: series.code,
+            Year: point.Year,
+            Emission: point.Emission
+        })));
+        exportCSV(rows, `emissions-series-${appState.selectedYear}.csv`);
+    }).catch(error => {
+        console.error('Erro ao exportar CSV:', error);
+        alert('Não foi possível exportar o CSV.');
+    });
+}
+
+function exportCurrentYearCSV() {
+    if (!appState.mapData || !appState.mapData.length) {
+        alert('Não há dados para exportar para o ano selecionado.');
+        return;
+    }
+    const rows = appState.mapData.map(entry => ({
+        Entity: entry.Entity,
+        Code: entry.Code,
+        Year: appState.selectedYear,
+        Emission: entry.Emission,
+        Delta: entry.Delta
+    }));
+    exportCSV(rows, `emissions-year-${appState.selectedYear}.csv`);
+}
+
+async function handleCountrySelection(countryCode) {
+    try {
+        ensureDatabase();
+        toggleCountrySelection(countryCode);
+        await updateCountrySeries();
+    } catch (error) {
+        console.error('Erro ao seleccionar país:', error);
+        document.getElementById('countryName').textContent = `Erro: ${error.message}`;
+    }
 }
 
 window.onload = async () => {
     await initDatabase();
     
+    // Esconder loading indicator ao terminar com sucesso
+    const loader = document.getElementById('loading-indicator');
+    if (loader) loader.style.display = 'none';
+    
+    const countries = await loadAvailableCountries();
+    populateCountrySelect(countries);
+    
     // Renderização inicial do dashboard
     await updateDashboard();
-    
-    // Força a carga da série temporal do país padrão para não iniciar vazio
-    if (appState.selectedCountry) {
-        await handleCountrySelection(appState.selectedCountry);
-    }
 
     const slider = document.getElementById('yearSlider');
     const playBtn = document.getElementById('playButton');
+    const exportPngBtn = document.getElementById('exportPngBtn');
+    const exportCsvBtn = document.getElementById('exportCsvBtn');
+    const exportYearCsvBtn = document.getElementById('exportYearCsvBtn');
+    const presetButtons = document.querySelectorAll('[data-preset-year]');
+    const countrySelect = document.getElementById('countrySelect');
+    const applyCountrySelectionBtn = document.getElementById('applyCountrySelection');
 
-    if (playBtn) playBtn.onclick = togglePlay;
+    if (playBtn) {
+        playBtn.onclick = togglePlay;
+        
+        playBtn.addEventListener('keydown', (e) => {
+            if (e.code === 'Space' || e.code === 'Enter') {
+                e.preventDefault();
+                togglePlay();
+            }
+        });
+    }
+
+    if (exportPngBtn) {
+        exportPngBtn.onclick = exportLineChartPNG;
+    }
+
+    if (exportCsvBtn) {
+        exportCsvBtn.onclick = exportSelectedSeriesCSV;
+    }
+
+    if (exportYearCsvBtn) {
+        exportYearCsvBtn.onclick = exportCurrentYearCSV;
+    }
+
+    presetButtons.forEach(button => {
+        button.addEventListener('click', () => {
+            const targetYear = Number(button.getAttribute('data-preset-year'));
+            if (!Number.isNaN(targetYear)) {
+                appState.selectedYear = targetYear;
+                updateUIFromState();
+                updateDashboard();
+            }
+        });
+    });
+
+    if (applyCountrySelectionBtn) {
+        applyCountrySelectionBtn.onclick = async () => {
+            const selectedOptions = Array.from(countrySelect.selectedOptions).map(option => option.value);
+            if (selectedOptions.length > 0) {
+                appState.selectedCountries = selectedOptions;
+                await updateCountrySeries();
+            }
+        };
+    }
 
     if (slider) {
         slider.oninput = (e) => {
@@ -153,5 +435,41 @@ window.onload = async () => {
             updateUIFromState();
             updateDashboard();
         };
+        
+        slider.addEventListener('keydown', (e) => {
+            const step = e.shiftKey ? 10 : 1; // Shift para saltar 10 anos
+            
+            if (e.code === 'ArrowLeft' && appState.selectedYear > appState.minYear) {
+                e.preventDefault();
+                appState.selectedYear = Math.max(appState.minYear, appState.selectedYear - step);
+                updateUIFromState();
+                updateDashboard();
+            }
+            if (e.code === 'ArrowRight' && appState.selectedYear < appState.maxYear) {
+                e.preventDefault();
+                appState.selectedYear = Math.min(appState.maxYear, appState.selectedYear + step);
+                updateUIFromState();
+                updateDashboard();
+            }
+        });
+    }
+
+    if (countrySelect) {
+        countrySelect.addEventListener('dblclick', async () => {
+            const selectedOptions = Array.from(countrySelect.selectedOptions).map(option => option.value);
+            if (selectedOptions.length > 0) {
+                appState.selectedCountries = selectedOptions;
+                await updateCountrySeries();
+            }
+        });
+    }
+
+    if ('serviceWorker' in navigator) {
+        try {
+            await navigator.serviceWorker.register('/sw.js');
+            console.log('Service Worker registrado com sucesso.');
+        } catch (err) {
+            console.warn('Falha ao registrar Service Worker:', err);
+        }
     }
 };

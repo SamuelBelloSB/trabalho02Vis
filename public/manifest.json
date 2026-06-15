@@ -1,0 +1,15 @@
+{
+  "short_name": "CO2Mapa",
+  "name": "Visualizador de Emissões CO2",
+  "start_url": ".",
+  "display": "standalone",
+  "background_color": "#121212",
+  "theme_color": "#121212",
+  "icons": [
+    {
+      "src": "icons/icon.svg",
+      "sizes": "192x192",
+      "type": "image/svg+xml"
+    }
+  ]
+}
