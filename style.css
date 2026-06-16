@@ -1,0 +1,268 @@
+:root {
+    color-scheme: dark;
+    --bg: #0f1218;
+    --surface: #181c24;
+    --surface-strong: #21272f;
+    --surface-soft: #252c36;
+    --border: rgba(255,255,255,0.08);
+    --text: #e6eef8;
+    --text-muted: #a3afc2;
+    --accent: #e41a1c;
+    --shadow: 0 24px 80px rgba(0,0,0,0.32);
+}
+
+* {
+    box-sizing: border-box;
+}
+
+body {
+    font-family: 'Inter', system-ui, sans-serif;
+    margin: 0;
+    min-height: 100vh;
+    background: var(--bg);
+    color: var(--text);
+}
+
+.header {
+    padding: 1.5rem 2rem;
+    background: #12161f;
+    border-bottom: 1px solid rgba(255,255,255,0.06);
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    gap: 20px;
+    position: sticky;
+    top: 0;
+    z-index: 5;
+}
+
+.header h1 {
+    margin: 0;
+    font-size: 1.3rem;
+    font-weight: 700;
+    letter-spacing: 0.02em;
+}
+
+.header .controls {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 12px;
+    align-items: center;
+    background: var(--surface);
+    padding: 12px 16px;
+    border-radius: 999px;
+    border: 1px solid rgba(255,255,255,0.06);
+}
+
+.app-layout {
+    display: flex;
+    gap: 24px;
+    padding: 24px;
+    max-width: 1600px;
+    margin: 0 auto;
+}
+
+.dashboard-main {
+    flex: 1;
+}
+
+.sidebar {
+    width: 320px;
+    min-width: 320px;
+    display: flex;
+    flex-direction: column;
+    gap: 20px;
+    position: sticky;
+    top: 90px;
+    align-self: flex-start;
+}
+
+.sidebar-card,
+.card {
+    background: var(--surface);
+    border-radius: 22px;
+    border: 1px solid var(--border);
+    box-shadow: var(--shadow);
+    padding: 22px;
+    display: flex;
+    flex-direction: column;
+    gap: 14px;
+    overflow: hidden;
+}
+
+.dashboard-grid {
+    display: grid;
+    /* O auto-fit cria colunas dinâmicas. O minmax garante que nenhum gráfico 
+       tenha menos de 450px de largura. Se não couberem dois de 450px lado a lado, 
+       ele joga o próximo para a linha de baixo automaticamente. */
+    grid-template-columns: repeat(auto-fit, minmax(450px, 1fr));
+    gap: 24px;
+    align-items: start;
+}
+
+/* O mapa é o destaque principal, então forçamos ele a ocupar a linha inteira */
+#chart-container { 
+    grid-column: 1 / -1; 
+    min-height: 480px; 
+}
+
+/* Os demais gráficos vão fluir no espaço restante */
+#scatter-plot-container { 
+    min-height: 380px; 
+}
+#line-chart-container { 
+    min-height: 380px; 
+    /* O line chart costuma precisar de mais espaço horizontal para a série histórica. 
+       Se ele ficar sozinho em uma linha, forçamos a ocupar o espaço total. */
+    flex-grow: 1; 
+}
+#bar-chart-container { 
+    min-height: 380px; 
+}
+
+.filter-group {
+    display: flex;
+    flex-direction: column;
+    gap: 12px;
+    background: #1f2631;
+    border: 1px solid rgba(255,255,255,0.06);
+    border-radius: 18px;
+    padding: 18px;
+}
+
+.filter-group label {
+    color: var(--text-muted);
+    font-size: 0.85rem;
+    text-transform: uppercase;
+    letter-spacing: 0.08em;
+}
+
+.filter-group select,
+.filter-group button {
+    width: 100%;
+}
+
+.filter-group select {
+    min-height: 130px;
+    background: #151b24;
+    color: var(--text);
+    border: 1px solid rgba(255,255,255,0.08);
+    border-radius: 14px;
+    padding: 12px;
+}
+
+.filter-group button,
+.preset-buttons button,
+.header button {
+    background: var(--accent);
+    color: #fff;
+    border: none;
+    border-radius: 999px;
+    padding: 12px 18px;
+    font-weight: 700;
+    cursor: pointer;
+    transition: transform 180ms ease, opacity 180ms ease;
+}
+
+button:hover {
+    transform: translateY(-1px);
+    opacity: 0.92;
+}
+
+.year-value {
+    font-weight: 700;
+    color: var(--accent);
+}
+
+.preset-buttons {
+    display: grid;
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    gap: 10px;
+}
+
+.card-title {
+    font-size: 0.8rem;
+    text-transform: uppercase;
+    color: var(--text-muted);
+    letter-spacing: 0.12em;
+    margin: 0;
+    padding-left: 0;
+    border: none;
+}
+
+.card-title span {
+    color: var(--text);
+    font-size: 1rem;
+    display: block;
+    margin-top: 8px;
+}
+
+svg { width: 100%; height: 100%; display: block; }
+
+.legend-container { margin-top: auto; padding-top: 10px; }
+
+.axis-label { font-size: 11px; fill: #888; }
+
+/* Map Styles */
+.choropleth-map {
+    width: 100%;
+    height: 100%;
+    display: block;
+    background: var(--surface);
+}
+
+.map-tooltip {
+    position: absolute;
+    pointer-events: none;
+    background: rgba(15, 18, 24, 0.96);
+    border: 1px solid rgba(255,255,255,0.15);
+    border-radius: 10px;
+    padding: 10px 12px;
+    color: #f4f7ff;
+    font-size: 11px;
+    line-height: 1.6;
+    box-shadow: 0 12px 24px rgba(0,0,0,0.4);
+    z-index: 10001;
+    display: none;
+    max-width: 200px;
+}
+
+.map-error {
+    color: #ff5555;
+    padding: 20px;
+    text-align: center;
+    font-size: 13px;
+}
+
+.legend-svg {
+    width: 100%;
+    height: auto;
+}
+
+/* Loading Indicator */
+.loading-overlay { position: fixed; top: 0; left: 0; width: 100%; height: 100%; background: rgba(15, 18, 24, 0.96); display: flex; align-items: center; justify-content: center; z-index: 9999; }
+.loading-container { text-align: center; color: var(--text); }
+.spinner { width: 44px; height: 44px; border: 4px solid rgba(255,255,255,0.08); border-top: 4px solid var(--accent); border-radius: 50%; animation: spin 1s linear infinite; margin: 0 auto 20px; }
+
+@keyframes spin { 0% { transform: rotate(0deg); } 100% { transform: rotate(360deg); } }
+
+@media (max-width: 1100px) {
+    .app-layout { flex-direction: column; padding: 18px; }
+    .sidebar { width: 100%; min-width: auto; position: relative; top: 0; }
+    
+    /* Quando for tablet/mobile, removemos a restrição de 450px para não estourar a tela */
+    .dashboard-grid { 
+        grid-template-columns: 1fr; 
+    }
+    
+    #chart-container, #line-chart-container, #scatter-plot-container, #bar-chart-container { 
+        min-height: 320px; 
+    }
+}
+
+@media (max-width: 700px) {
+    .header { padding: 1rem 1rem; flex-direction: column; align-items: stretch; }
+    .header .controls { justify-content: center; }
+    .filter-group { padding: 16px; }
+    .preset-buttons { grid-template-columns: 1fr; }
+}

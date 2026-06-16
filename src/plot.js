@@ -227,8 +227,9 @@ export function updateBarChart(data) {
                 .style('color', '#fff')
                 .style('font-size', '12px')
                 .style('box-shadow', '0 2px 20px rgba(0,0,0,0.4)')
-                .style('z-index', '1000'),
-            update => update
+                .style('z-index', '1000')
+                .style('display', 'none'),
+            update => update.style('display', 'none')
         );
 
     svgElement.selectAll('.bar')
@@ -255,7 +256,22 @@ export function updateBarChart(data) {
                     barTooltip.style('display', 'none');
                 })
                 .call(enter => enter.transition().duration(700).attr('width', d => x(d.Emission))),
-            update => update.transition().duration(500)
+            update => update
+                .attr('y', d => y(d.Entity))
+                .attr('height', y.bandwidth())
+                .on('mouseover', function(event, d) {
+                    d3.select(this).transition().duration(150).attr('fill', '#ff5b5b');
+                    barTooltip.style('display', 'block')
+                        .html(`<strong>${d.Entity}</strong><br/>Emissão: ${formatEmission(d.Emission)}`);
+                })
+                .on('mousemove', function(event) {
+                    barTooltip.style('left', `${event.pageX + 12}px`).style('top', `${event.pageY + 12}px`);
+                })
+                .on('mouseout', function() {
+                    d3.select(this).transition().duration(150).attr('fill', '#e41a1c');
+                    barTooltip.style('display', 'none');
+                })
+                .transition().duration(500)
                 .attr('y', d => y(d.Entity))
                 .attr('height', y.bandwidth())
                 .attr('width', d => x(d.Emission)),
@@ -362,107 +378,185 @@ export function updateScatterPlot(data, onCountryClick) {
 export async function loadChoroplethMap(data, onCountryClick) {
     const container = d3.select('#chart-container');
     const legendContainer = d3.select('#map-legend');
-    
-    // Singleton: Carrega o SVG apenas uma vez
+
     let svg = container.select('svg');
-    if (svg.empty()) {
+    const isFirstLoad = svg.empty();
+
+    if (isFirstLoad) {
         try {
-            // Carregar SVG com fetch + DOMParser (compatível com D3 v7+)
             const response = await fetch('/share-of-cumulative-co2.svg');
             if (!response.ok) throw new Error(`HTTP ${response.status}: SVG não encontrado`);
-            
+
             const svgText = await response.text();
             const parser = new DOMParser();
             const svgDoc = parser.parseFromString(svgText, 'image/svg+xml');
-            
-            // Validar se o parse foi bem-sucedido
             if (svgDoc.getElementsByTagName('parsererror').length > 0) {
                 throw new Error('SVG inválido ou mal-formado');
             }
-            
-            // Clonar para evitar problemas de references
-            container.node().appendChild(svgDoc.documentElement.cloneNode(true));
-            svg = container.select('svg');
-            svg.selectAll('text, title, metadata').remove();
+
+            container.html('');
+            const svgNode = svgDoc.documentElement.cloneNode(true);
+            svgNode.setAttribute('viewBox', svgNode.getAttribute('viewBox') || '0 0 1000 600');
+            svgNode.setAttribute('preserveAspectRatio', 'xMidYMid meet');
+            svgNode.setAttribute('class', 'choropleth-map');
+
+            const wrapper = document.createElement('div');
+            wrapper.style.width = '100%';
+            wrapper.style.height = '100%';
+            wrapper.style.overflow = 'hidden';
+            wrapper.appendChild(svgNode);
+
+            container.node().appendChild(wrapper);
+            svg = d3.select(svgNode);
+
+            svg.selectAll('text, title, desc, metadata, defs').remove();
+
+            const g = svg.append('g').attr('class', 'map-group');
+            svg.selectAll('*:not(g.map-group)').each(function() {
+                if (d3.select(this).attr('class') !== 'map-group') {
+                    g.node().appendChild(this);
+                }
+            });
+
+            const zoom = d3.zoom()
+                .scaleExtent([1, 8])
+                .on('zoom', (event) => {
+                    g.attr('transform', event.transform);
+                });
+
+            svg.call(zoom);
+            svg.style('cursor', 'grab');
+
+            console.log('[Map] SVG injetado com sucesso no DOM');
         } catch (error) {
-            console.error('Erro ao carregar SVG:', error);
-            container.html(`<div style="color: #f44; padding: 20px; text-align: center;">
-                <strong>Erro:</strong> ${error.message}<br/>
-                <small>Verifique se o ficheiro /share-of-cumulative-co2.svg existe.</small>
-            </div>`);
-            return; // Exit early
+            console.error('[Map] Erro ao carregar SVG:', error);
+            container.html(`<div class="map-error"><strong>Erro:</strong> ${error.message}<br/><small>Verifique se /share-of-cumulative-co2.svg existe.</small></div>`);
+            return;
         }
     }
 
-    // Build quick lookup maps by ISO code
     const codeMap = new Map(data.map(d => [d.Code.toUpperCase(), d]));
-
-    // Color scale: YlOrRd evoca aquecimento e emissões (Tema científico)
     const thresholds = [0, 0.1, 0.5, 1, 2, 5, 10, 20];
     const colors = d3.schemeYlOrRd[9];
     const colorScale = d3.scaleThreshold().domain(thresholds).range(colors);
 
-    // Renderização da Legenda (apenas uma vez)
     if (legendContainer.select('svg').empty()) {
-        const lW = 280, cellW = lW / colors.length;
-        const lSvg = legendContainer.append('svg').attr('viewBox', `0 0 ${lW} 40`);
+        const lW = 280;
+        const cellW = lW / colors.length;
+        const lSvg = legendContainer.append('svg').attr('viewBox', `0 0 ${lW} 40`).attr('class', 'legend-svg');
         lSvg.selectAll('rect').data(colors).join('rect')
-            .attr('x', (d, i) => i * cellW).attr('width', cellW).attr('height', 10).attr('fill', d => d);
+            .attr('x', (d, i) => i * cellW)
+            .attr('width', cellW)
+            .attr('height', 10)
+            .attr('fill', d => d);
         const xL = d3.scaleLinear().domain([0, 20]).range([0, lW]);
         lSvg.append('g').attr('transform', 'translate(0,10)')
             .call(d3.axisBottom(xL).tickValues(thresholds).tickFormat(d => d + '%'))
-            .style('color', '#888').style('font-size', '8px').select('.domain').remove();
+            .style('color', '#888')
+            .style('font-size', '8px')
+            .select('.domain').remove();
     }
 
-    // Singleton para o Tooltip (Evita múltiplas instâncias no DOM)
     let tooltip = d3.select('.map-tooltip');
     if (tooltip.empty()) {
         tooltip = d3.select('body').append('div').attr('class', 'map-tooltip').style('display', 'none');
     }
 
-    // Função helper para validar ISO3
     function isValidISO3(code) {
-        if (!code) return false;
-        return /^[A-Z]{3}$/.test(code.toUpperCase());
+        return typeof code === 'string' && /^[A-Z]{3}$/.test(code.trim().toUpperCase());
     }
 
-    // PASSO 1: Selecionar features e atualizar apenas cores (sem re-binding listeners)
-    const features = svg.selectAll('[id]')
-        .filter(function() { return this.id && isValidISO3(this.id); });
+    const mapGroup = svg.select('g.map-group');
+    const countries = mapGroup.selectAll('path[id], g[id], polygon[id]').filter(function() {
+        const id = d3.select(this).attr('id');
+        return id && isValidISO3(id);
+    });
 
-    features.transition().duration(250)
-        .attr('fill', function() {
-            const iso = this.id.toUpperCase();
-            const entry = codeMap.get(iso);
-            const val = entry ? entry.Emission : null;
-            return (val === null || val === 0) ? '#2a2a2a' : colorScale(val);
-        });
+    console.log(`[Map] ${countries.size} países encontrados no SVG`);
 
-    // PASSO 2: Bind listeners uma única vez (usa a flag data para evitar rebinding)
-    // Se já têm listeners, esta chamada é no-op (meramente dados + transição)
-    features
-        .on('mousemove', function(event) {
-            const iso = this.id.toUpperCase();
-            tooltip.style('left', (event.pageX + 15) + 'px')
-                   .style('top', (event.pageY + 15) + 'px');
-        })
-        .on('mouseover', function(event) {
-            const iso = this.id.toUpperCase();
-            const entry = codeMap.get(iso);
-            const val = entry ? entry.Emission : null;
-            
-            d3.select(this).style('stroke', '#fff').style('stroke-width', '1px').raise();
-            tooltip.style('display', 'block')
-                   .html(`<strong>${entry ? entry.Entity : iso}</strong><br/>
-                          <em>Participação:</em> ${formatEmission(val)}<br/>
-                          <em>Tendência (Δ):</em> ${entry && entry.Delta ? formatPercent(entry.Delta) + '%' : 'N/A'}`);
-        })
-        .on('mouseout', function() {
-            d3.select(this).style('stroke', null).style('stroke-width', null);
-            tooltip.style('display', 'none');
-        })
-        .on('click', function() {
-            const iso = this.id.toUpperCase();
-            onCountryClick(iso);
-        });
+    countries
+        .attr('stroke', 'rgba(255,255,255,0.1)')
+        .attr('stroke-width', 0.5)
+        .style('cursor', 'pointer');
+
+    console.log(`[Map] Iniciando atribuição de event listeners...`);
+
+    // Try attaching event handlers with error handling
+    try {
+        countries
+            .on('mouseover', function(event) {
+                // DEBUG: Add visible marker
+                const debugMarker = document.getElementById('hover-debug-marker');
+                if (debugMarker) debugMarker.remove();
+                const marker = document.createElement('div');
+                marker.id = 'hover-debug-marker';
+                marker.textContent = 'HOVER DETECTED';
+                marker.style.cssText = 'position: fixed; top: 120px; right: 20px; background: lime; color: black; padding: 10px; z-index: 9999; border-radius: 4px; font-weight: bold;';
+                document.body.appendChild(marker);
+
+                const iso = d3.select(this).attr('id').toUpperCase();
+                const entry = codeMap.get(iso);
+                const val = entry ? entry.Emission : null;
+                const hoveredElement = d3.select(this);
+
+                console.log(`[Map] Mouseover fired: ${iso}`);
+
+                // Dim all other countries
+                countries.transition().duration(150)
+                    .style('opacity', 0.2);
+
+                // Highlight hovered
+                hoveredElement.transition().duration(150)
+                    .style('opacity', 1)
+                    .attr('stroke', '#000000')
+                    .attr('stroke-width', 2);
+                
+                hoveredElement.raise();
+
+                // Tooltip
+                tooltip.style('display', 'block')
+                    .html(`
+                        <strong>${entry ? entry.Entity : iso}</strong><br/>
+                        <em>Emissão:</em> ${formatEmission(val)}<br/>
+                        <em>Tendência:</em> ${entry && entry.Delta !== null && entry.Delta !== undefined ? formatPercent(entry.Delta) + '%' : 'N/A'}
+                    `);
+            })
+            .on('mousemove', function(event) {
+                tooltip
+                    .style('left', `${event.pageX + 14}px`)
+                    .style('top', `${event.pageY + 14}px`);
+            })
+            .on('mouseout', function() {
+                const iso = d3.select(this).attr('id').toUpperCase();
+                const entry = codeMap.get(iso);
+                const val = entry ? entry.Emission : null;
+
+                console.log(`[Map] Mouseout fired: ${iso}`);
+
+                // Restore all
+                countries.transition().duration(150)
+                    .style('opacity', 1)
+                    .attr('fill', function() {
+                        const countryISO = d3.select(this).attr('id').toUpperCase();
+                        const countryEntry = codeMap.get(countryISO);
+                        const countryVal = countryEntry ? countryEntry.Emission : null;
+                        return (countryVal === null || countryVal === 0) ? '#2a2a2a' : colorScale(countryVal);
+                    })
+                    .attr('stroke', 'rgba(255,255,255,0.1)')
+                    .attr('stroke-width', 0.5);
+
+                tooltip.style('display', 'none');
+            })
+            .on('click', function() {
+                const iso = d3.select(this).attr('id').toUpperCase();
+                console.log(`[Map] Clique: ${iso}`);
+                onCountryClick(iso);
+            });
+        
+        console.log(`[Map] Event handlers attached com sucesso`);
+    } catch (error) {
+        console.error(`[Map] Erro ao atribuir handlers:`, error);
+    }
+
+    svg.style('pointer-events', 'all');
 }
