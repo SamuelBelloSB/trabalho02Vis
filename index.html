@@ -6,45 +6,7 @@
     <meta name="theme-color" content="#121212">
     <link rel="manifest" href="/manifest.json">
     <title>Visualização de Emissões CO2</title>
-    <style>
-        body { font-family: 'Inter', system-ui, sans-serif; margin: 0; background: #121212; color: #e0e0e0; display: flex; flex-direction: column; min-height: 100vh; }
-        .header { padding: 1rem 2rem; background: #252525; border-bottom: 1px solid #333; display: flex; justify-content: space-between; align-items: center; }
-        .dashboard-grid { display: grid; grid-template-columns: 1fr; gap: 20px; padding: 20px; flex-grow: 1; overflow-y: auto; }
-        .card { background: #252525; border-radius: 8px; border: 1px solid #333; padding: 15px; display: flex; flex-direction: column; position: relative; }
-        #chart-container { grid-column: span 1; min-height: 450px; }
-        .controls { display: flex; align-items: center; gap: 15px; background: #333; padding: 8px 15px; border-radius: 20px; }
-        .toolbar { display: grid; grid-template-columns: 1fr 1fr 1fr; gap: 15px; margin: 0 20px 20px; }
-        .toolbar-group { display: flex; flex-direction: column; gap: 10px; background: #1e1e1e; border: 1px solid #333; border-radius: 10px; padding: 12px; }
-        .toolbar-group label { color: #ccc; font-size: 0.85rem; }
-        .toolbar-group select { width: 100%; min-height: 120px; background: #141414; color: #eee; border: 1px solid #444; border-radius: 8px; padding: 8px; }
-        .toolbar-group button { width: 100%; }
-        .preset-buttons { display: flex; flex-wrap: wrap; gap: 8px; }
-        .preset-buttons button { flex: 1 1 auto; }
-        input[type="range"] { accent-color: #e41a1c; width: 200px; }
-        button { background: #e41a1c; border: none; color: white; padding: 5px 15px; border-radius: 15px; cursor: pointer; font-weight: bold; transition: opacity 0.2s; }
-        button:hover { opacity: 0.8; }
-        .map-tooltip { position: absolute; background: rgba(0,0,0,0.9); border: 1px solid #444; padding: 8px; border-radius: 4px; pointer-events: none; z-index: 1000; font-size: 12px; }
-        h1 { margin: 0; font-size: 1.2rem; font-weight: 500; }
-        .card-title { font-size: 0.85rem; text-transform: uppercase; color: #aaa; margin-bottom: 15px; letter-spacing: 1px; border-left: 3px solid #e41a1c; padding-left: 10px; }
-        svg { width: 100%; height: 100%; }
-        .legend-container { margin-top: auto; padding-top: 10px; }
-        .axis-label { font-size: 11px; fill: #888; }
-        /* Loading Indicator */
-        .loading-overlay { position: fixed; top: 0; left: 0; width: 100%; height: 100%; background: rgba(18, 18, 18, 0.95); display: flex; align-items: center; justify-content: center; z-index: 9999; }
-        .loading-container { text-align: center; color: #e0e0e0; }
-        .spinner { width: 40px; height: 40px; border: 4px solid #333; border-top: 4px solid #e41a1c; border-radius: 50%; animation: spin 1s linear infinite; margin: 0 auto 20px; }
-        @keyframes spin { 0% { transform: rotate(0deg); } 100% { transform: rotate(360deg); } }
-        /* Responsividade */
-        @media (min-width: 768px) {
-            .dashboard-grid { grid-template-columns: 1fr 1fr; }
-        }
-        @media (max-width: 600px) {
-            .header { flex-direction: column; gap: 10px; padding: 1rem; }
-            .controls { width: 100%; justify-content: center; flex-wrap: wrap; }
-            input[type="range"] { width: 100%; max-width: 200px; }
-            .card { min-height: 300px; }
-        }
-    </style>
+    <link rel="stylesheet" href="/style.css">
 </head>
 <body>
     <div id="loading-indicator" class="loading-overlay">
@@ -58,49 +20,59 @@
         <h1>Monitor de Emissões Globais (1750-2021)</h1>
         <div class="controls">
             <button id="playButton">PLAY</button>
-            <label for="yearSlider">Ano: </label>
+            <label for="yearSlider">Ano</label>
             <input type="range" id="yearSlider" min="1750" max="2021" value="2021">
-            <span id="yearValue" style="font-weight: bold; color: #e41a1c;">2021</span>
+            <span id="yearValue" class="year-value">2021</span>
         </div>
     </div>
 
-    <div class="toolbar">
-        <div class="toolbar-group">
-            <label for="countrySelect">Comparação multi-país</label>
-            <select id="countrySelect" multiple aria-label="Selecionar países" title="Segure Ctrl/Cmd para múltiplas seleções"></select>
-            <button id="applyCountrySelection">Aplicar seleção</button>
-        </div>
-        <div class="toolbar-group">
-            <label>Presets de ano</label>
-            <div class="preset-buttons">
-                <button type="button" data-preset-year="1800">1800</button>
-                <button type="button" data-preset-year="1950">1950</button>
-                <button type="button" data-preset-year="2000">2000</button>
-                <button type="button" data-preset-year="2021">2021</button>
+    <div class="app-layout">
+        <main class="dashboard-main">
+            <div class="dashboard-grid">
+                <div id="chart-container" class="card">
+                    <div class="card-title">Distribuição Espacial (Where)</div>
+                    <div id="map-legend" class="legend-container"></div>
+                </div>
+                <div id="scatter-plot-container" class="card">
+                    <div class="card-title">Correlação: Acumulado vs. Tendência Atual (What)</div>
+                </div>
+                <div id="line-chart-container" class="card">
+                    <div class="card-title">Evolução Temporal: <span id="countryName">USA</span> (When)</div>
+                </div>
+                <div id="bar-chart-container" class="card">
+                    <div class="card-title">Ranking de Impacto (Who)</div>
+                </div>
             </div>
-        </div>
-        <div class="toolbar-group">
-            <label>Exportações</label>
-            <button id="exportPngBtn" type="button">Exportar PNG</button>
-            <button id="exportCsvBtn" type="button">Exportar CSV séries</button>
-            <button id="exportYearCsvBtn" type="button">Exportar CSV ano</button>
-        </div>
-    </div>
+        </main>
 
-    <div class="dashboard-grid">
-        <div id="chart-container" class="card">
-            <div class="card-title">Distribuição Espacial (Where)</div>
-            <div id="map-legend" class="legend-container"></div>
-        </div>
-        <div id="scatter-plot-container" class="card">
-            <div class="card-title">Correlação: Acumulado vs. Tendência Atual (What)</div>
-        </div>
-        <div id="line-chart-container" class="card">
-            <div class="card-title">Evolução Temporal: <span id="countryName">USA</span> (When)</div>
-        </div>
-        <div id="bar-chart-container" class="card">
-            <div class="card-title">Ranking de Impacto (Who)</div>
-        </div>
+        <aside class="sidebar">
+            <section class="sidebar-card">
+                <div class="filter-group">
+                    <label for="countrySelect">Comparação multi-país</label>
+                    <select id="countrySelect" multiple aria-label="Selecionar países" title="Segure Ctrl/Cmd para múltiplas seleções"></select>
+                    <button id="applyCountrySelection">Aplicar seleção</button>
+                </div>
+            </section>
+            <section class="sidebar-card">
+                <div class="filter-group">
+                    <label>Presets de ano</label>
+                    <div class="preset-buttons">
+                        <button type="button" data-preset-year="1800">1800</button>
+                        <button type="button" data-preset-year="1950">1950</button>
+                        <button type="button" data-preset-year="2000">2000</button>
+                        <button type="button" data-preset-year="2021">2021</button>
+                    </div>
+                </div>
+            </section>
+            <section class="sidebar-card">
+                <div class="filter-group">
+                    <label>Exportações</label>
+                    <button id="exportPngBtn" type="button">Exportar PNG</button>
+                    <button id="exportCsvBtn" type="button">Exportar CSV séries</button>
+                    <button id="exportYearCsvBtn" type="button">Exportar CSV ano</button>
+                </div>
+            </section>
+        </aside>
     </div>
 
     <script type="module" src="/src/main.js"></script>
