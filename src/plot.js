@@ -16,7 +16,7 @@ export function updateBarChart(data) {
     // Obtém dimensões dinâmicas do container
     const margin = { top: 20, right: 30, bottom: 40, left: 120 };
     const width = (container.node()?.clientWidth || 400) - margin.left - margin.right;
-    const height = 350 - margin.top - margin.bottom;
+    const height = (container.node()?.clientHeight || 400) - margin.top - margin.bottom;
 
     // Limpa ou cria o SVG
     let svg = container.select("svg");
@@ -111,7 +111,7 @@ let worldData = null;
 export async function loadChoroplethMap(data, onSelect) {
     const container = d3.select("#chart-container");
     const width = container.node()?.clientWidth || 600;
-    const height = 450;
+    const height = container.node()?.clientHeight || 450;
 
     let svg = container.select("svg");
     if (svg.empty()) {
@@ -237,7 +237,7 @@ export function updateTimeSeriesChart(seriesList) {
     const container = d3.select("#line-chart-container");
     const margin = { top: 20, right: 30, bottom: 40, left: 60 };
     const width = (container.node()?.clientWidth || 400) - margin.left - margin.right;
-    const height = 300 - margin.top - margin.bottom;
+    const height = (container.node()?.clientHeight || 350) - margin.top - margin.bottom;
 
     let svg = container.select("svg");
     if (svg.empty()) {
@@ -335,7 +335,7 @@ export function updateScatterPlot(data, onSelect) {
     const container = d3.select("#scatter-plot-container");
     const margin = { top: 20, right: 30, bottom: 40, left: 60 };
     const width = (container.node()?.clientWidth || 400) - margin.left - margin.right;
-    const height = 300 - margin.top - margin.bottom;
+    const height = (container.node()?.clientHeight || 350) - margin.top - margin.bottom;
 
     let svg = container.select("svg");
     if (svg.empty()) {
@@ -396,4 +396,71 @@ export function updateScatterPlot(data, onSelect) {
         .attr("cx", d => x(d.Emission))
         .attr("cy", d => y(d.Delta || 0))
         .attr("r", 4);
+}
+
+/**
+ * Gráfico de Eficiência Energética (CO2 vs Energia)
+ */
+export function updateEnergyEfficiencyChart(data) {
+    if (!data || data.length === 0) return;
+
+    const container = d3.select("#energy-efficiency-container");
+    const margin = { top: 20, right: 30, bottom: 40, left: 60 };
+    const width = (container.node()?.clientWidth || 400) - margin.left - margin.right;
+    const height = (container.node()?.clientHeight || 350) - margin.top - margin.bottom;
+
+    let svg = container.select("svg");
+    if (svg.empty()) {
+        svg = container.append("svg")
+            .attr("viewBox", `0 0 ${width + margin.left + margin.right} ${height + margin.top + margin.bottom}`)
+            .append("g")
+            .attr("transform", `translate(${margin.left},${margin.top})`);
+    } else {
+        svg = svg.select("g");
+    }
+
+    const x = d3.scaleLinear()
+        .domain([0, d3.max(data, d => d.Energy_TWh) || 1])
+        .range([0, width]);
+
+    const y = d3.scaleLinear()
+        .domain([0, d3.max(data, d => d.CO2_Share) || 1])
+        .range([height, 0]);
+
+    svg.selectAll(".axis").remove();
+    svg.append("g").attr("class", "axis").attr("transform", `translate(0,${height})`)
+        .call(d3.axisBottom(x).ticks(5).tickFormat(d3.format(".0s")));
+    svg.append("g").attr("class", "axis").call(d3.axisLeft(y).ticks(5).tickFormat(d => d + "%"));
+
+    const dots = svg.selectAll(".dot-energy").data(data, d => d.Code);
+    dots.exit().remove();
+    dots.enter()
+        .append("circle")
+        .attr("class", "dot-energy")
+        .attr("r", 4)
+        .attr("fill", "#e41a1c")
+        .attr("opacity", 0.5)
+        .merge(dots)
+        .on("mouseover", function(event, d) {
+            d3.select(this).attr("r", 6).attr("opacity", 1);
+            tooltip.transition().duration(200).style("opacity", 1);
+            tooltip.html(`
+                <div style="border-bottom: 1px solid #444; padding-bottom: 4px; margin-bottom: 4px;">
+                    <strong>${d.Entity}</strong>
+                </div>
+                Energia: <strong>${Math.round(d.Energy_TWh)} TWh</strong><br/>
+                CO₂: <strong>${d.CO2_Share.toFixed(2)}%</strong><br/>
+                <small>Intensidade: ${d.Carbon_Intensity.toFixed(6)}</small>
+            `)
+            .style("left", (event.pageX + 10) + "px")
+            .style("top", (event.pageY - 10) + "px");
+        })
+        .on("mouseout", function() {
+            d3.select(this).attr("r", 4).attr("opacity", 0.5);
+            tooltip.style("opacity", 0);
+        })
+        .transition()
+        .duration(750)
+        .attr("cx", d => x(d.Energy_TWh))
+        .attr("cy", d => y(d.CO2_Share));
 }

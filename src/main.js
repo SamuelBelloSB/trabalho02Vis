@@ -1,5 +1,5 @@
 import { loadDb } from './config.js';
-import { loadChoroplethMap, updateTimeSeriesChart, updateBarChart, updateScatterPlot } from './plot.js';
+import { loadChoroplethMap, updateTimeSeriesChart, updateBarChart, updateScatterPlot, updateEnergyEfficiencyChart } from './plot.js';
 
 // Estado global da aplicação para evitar re-renderizações desnecessárias
 let conn;
@@ -167,12 +167,22 @@ async function initDatabase() {
         const db = await loadDb();
         conn = await db.connect();
         
-        const res = await fetch('/share-of-cumulative-co2.csv');
-        if (!res.ok) throw new Error("CSV não encontrado!");
+        // Carregamento dos Datasets
+        // Certifique-se de que os nomes dos arquivos e caminhos coincidem com a sua estrutura de pastas
+        const [resCo2, resEnergy] = await Promise.all([
+            fetch('share-of-cumulative-co2.csv'),
+            fetch('primary-energy-consumption.csv') // Dataset de Energia
+        ]);
 
-        const buffer = new Uint8Array(await res.arrayBuffer());
-        await db.registerFileBuffer('share-of-cumulative-co2.csv', buffer);
+        if (!resCo2.ok || !resEnergy.ok) throw new Error("Falha ao carregar datasets CSV.");
 
+        const bufferCo2 = new Uint8Array(await resCo2.arrayBuffer());
+        const bufferEnergy = new Uint8Array(await resEnergy.arrayBuffer());
+        
+        await db.registerFileBuffer('share-of-cumulative-co2.csv', bufferCo2);
+        await db.registerFileBuffer('primary-energy-consumption.csv', bufferEnergy);
+
+        // 1. Criar tabelas base de emissões (Obrigatório)
         await conn.query(`
             CREATE TABLE raw_emissions AS SELECT * FROM read_csv_auto('share-of-cumulative-co2.csv');
             
@@ -186,7 +196,34 @@ async function initDatabase() {
             FROM raw_emissions
             WHERE Code IS NOT NULL AND LENGTH(Code) = 3
             ORDER BY Year ASC;
+
+            -- Tabela otimizada para cruzamentos futuros
+            CREATE TABLE energy_co2_stats AS 
+            SELECT * FROM emissions;
         `);
+
+        // 2. Tentar carregar dados de energia (Opcional - Não quebra o dash se falhar)
+        try {
+            await conn.query(`
+                CREATE TABLE raw_energy AS SELECT * FROM read_csv_auto('primary-energy-consumption.csv', ignore_errors=true, sample_size=-1);
+                
+                -- Tabela de relação Energia vs CO2
+                CREATE TABLE energy_relationship AS
+                SELECT 
+                    e.Entity, 
+                    e.Code, 
+                    e.Year, 
+                    e.Emission as CO2_Share,
+                    en."Primary energy consumption (TWh)" as Energy_TWh,
+                    (e.Emission / NULLIF(en."Primary energy consumption (TWh)", 0)) as Carbon_Intensity
+                FROM emissions e
+                JOIN raw_energy en ON e.Code = en.Code AND e.Year = en.Year
+                WHERE e.Year >= 1965 AND en."Primary energy consumption (TWh)" IS NOT NULL;
+            `);
+            console.log("Dados de energia integrados com sucesso.");
+        } catch (err) {
+            console.warn("Aviso: Falha ao integrar dados de energia (csv não encontrado ou inválido).", err);
+        }
         
         // Criar índices para otimizar queries
         await conn.query(`
@@ -224,12 +261,28 @@ async function updateDashboard() {
     try {
         ensureDatabase();
 
+        // Busca dados da relação energia de forma segura
+        let energyData = [];
+        try {
+            const energyRes = await conn.query(`
+                SELECT * FROM energy_relationship WHERE Year = ${appState.selectedYear}
+            `);
+            energyData = energyRes.toArray().map(r => r.toJSON());
+        } catch (e) {
+            // Tabela energy_relationship pode não existir
+        }
+
         appState.mapData = await getMapData(appState.selectedYear);
         const topEmissions = await getTopEmissions(appState.selectedYear);
 
         await loadChoroplethMap(appState.mapData, handleCountrySelection);
         updateBarChart(topEmissions);
         updateScatterPlot(appState.mapData, handleCountrySelection);
+        
+        // Nova visualização
+        if (typeof updateEnergyEfficiencyChart === 'function' && energyData.length > 0) {
+            updateEnergyEfficiencyChart(energyData);
+        }
 
         await updateCountrySeries();
     } catch (error) {
