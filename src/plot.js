@@ -1,562 +1,399 @@
-import * as d3 from 'd3';
+import * as d3 from 'https://cdn.skypack.dev/d3@7';
+import * as topojson from 'https://cdn.skypack.dev/topojson-client@3';
 
-// Formateadores D3
-const formatPercent = d3.format('.2f');
-const formatInteger = d3.format('d');
-const formatScientific = d3.format('.2e');
+// Tooltip único para a aplicação, utilizando a classe já definida no seu CSS
+const tooltip = d3.select("body").append("div")
+    .attr("class", "map-tooltip")
+    .style("opacity", 0);
 
-function formatEmission(value) {
-    if (value === null || value === undefined) return 'N/A';
-    if (value > 1000) return formatScientific(value);
-    return formatPercent(value) + '%';
-}
-
-export function updateTimeSeriesChart(data, countryCode) {
-    const seriesList = Array.isArray(data) && data.length > 0 && data[0].values
-        ? data
-        : [{ entity: countryCode || 'Série', values: data || [] }];
-
-    const allPoints = seriesList.flatMap(series => series.values || []);
-    if (!allPoints.length) {
-        d3.select('#line-chart-container').selectAll('svg').remove();
-        return;
-    }
-
-    const margin = { top: 20, right: 120, bottom: 40, left: 50 };
-    const width = 800 - margin.left - margin.right;
-    const height = 300 - margin.top - margin.bottom;
-
-    const container = d3.select('#line-chart-container');
-    container.selectAll('svg').remove();
-
-    const svg = container.append('svg')
-        .attr('viewBox', `0 0 ${width + margin.left + margin.right} ${height + margin.top + margin.bottom}`)
-        .attr('preserveAspectRatio', 'xMidYMid meet')
-        .append('g')
-        .attr('transform', `translate(${margin.left},${margin.top})`);
-
-    const x = d3.scaleLinear()
-        .domain(d3.extent(allPoints, d => +d.Year))
-        .range([0, width]);
-
-    const y = d3.scaleLinear()
-        .domain([0, d3.max(allPoints, d => +d.Emission) || 0])
-        .nice()
-        .range([height, 0]);
-
-    const xAxis = d3.axisBottom(x).ticks(5).tickFormat(d3.format('d'));
-    const yAxis = d3.axisLeft(y).ticks(5);
-
-    svg.append('g')
-        .attr('class', 'x-axis')
-        .attr('transform', `translate(0,${height})`)
-        .call(xAxis)
-        .selectAll('text').style('fill', '#888');
-
-    svg.append('g')
-        .attr('class', 'y-axis')
-        .call(yAxis)
-        .selectAll('text').style('fill', '#888');
-
-    svg.selectAll('.domain, .tick line').style('stroke', '#444');
-
-    svg.append('text')
-        .attr('class', 'axis-title-x axis-label')
-        .attr('text-anchor', 'end')
-        .attr('x', width)
-        .attr('y', height + 35)
-        .text('Ano');
-
-    svg.append('text')
-        .attr('class', 'axis-title-y axis-label')
-        .attr('text-anchor', 'end')
-        .attr('transform', 'rotate(-90)')
-        .attr('y', -40)
-        .attr('x', 0)
-        .text('Participação (%)');
-
-    const color = d3.scaleOrdinal(d3.schemeTableau10).domain(seriesList.map(s => s.entity));
-
-    const line = d3.line()
-        .x(d => x(+d.Year))
-        .y(d => y(+d.Emission));
-
-    const tooltip = d3.select('body').selectAll('.chart-tooltip').data([null]);
-    tooltip.enter()
-        .append('div')
-        .attr('class', 'chart-tooltip')
-        .style('position', 'absolute')
-        .style('pointer-events', 'none')
-        .style('background', 'rgba(0, 0, 0, 0.92)')
-        .style('border', '1px solid #444')
-        .style('border-radius', '6px')
-        .style('padding', '8px 12px')
-        .style('color', '#fff')
-        .style('font-size', '12px')
-        .style('box-shadow', '0 2px 20px rgba(0,0,0,0.4)')
-        .style('z-index', '1000');
-
-    const seriesGroups = svg.selectAll('.series-group')
-        .data(seriesList, d => d.entity)
-        .join('g')
-        .attr('class', 'series-group');
-
-    seriesGroups.selectAll('.line-path')
-        .data(d => [d])
-        .join('path')
-        .attr('class', 'line-path')
-        .attr('fill', 'none')
-        .attr('stroke-width', 2)
-        .attr('stroke', d => color(d.entity))
-        .attr('d', d => line(d.values))
-        .attr('stroke-linejoin', 'round')
-        .attr('stroke-linecap', 'round')
-        .attr('opacity', 0.9)
-        .each(function(d) {
-            const totalLength = this.getTotalLength();
-            d3.select(this)
-                .attr('stroke-dasharray', `${totalLength} ${totalLength}`)
-                .attr('stroke-dashoffset', totalLength)
-                .transition().duration(900).ease(d3.easeCubicOut)
-                .attr('stroke-dashoffset', 0);
-        });
-
-    const pointData = seriesList.flatMap(series => (series.values || []).map(point => ({ ...point, entity: series.entity })));
-
-    svg.selectAll('.point')
-        .data(pointData, d => `${d.entity}-${d.Year}`)
-        .join(
-            enter => enter.append('circle')
-                .attr('class', 'point')
-                .attr('r', 4)
-                .attr('fill', d => color(d.entity))
-                .attr('stroke', '#121212')
-                .attr('stroke-width', 1)
-                .attr('cx', d => x(+d.Year))
-                .attr('cy', d => y(+d.Emission))
-                .style('cursor', 'pointer')
-                .on('mouseover', function(event, d) {
-                    d3.select(this).transition().duration(100).attr('r', 6).attr('stroke-width', 2);
-                    tooltip.style('display', 'block')
-                        .html(`<strong>${d.entity}</strong><br/>Ano: ${d.Year}<br/>Emissão: ${formatEmission(d.Emission)}`);
-                })
-                .on('mousemove', function(event) {
-                    tooltip.style('left', `${event.pageX + 12}px`).style('top', `${event.pageY + 12}px`);
-                })
-                .on('mouseout', function() {
-                    d3.select(this).transition().duration(100).attr('r', 4).attr('stroke-width', 1);
-                    tooltip.style('display', 'none');
-                }),
-            update => update.transition().duration(400)
-                .attr('cx', d => x(+d.Year))
-                .attr('cy', d => y(+d.Emission))
-                .attr('fill', d => color(d.entity)),
-            exit => exit.remove()
-        );
-
-    const legend = svg.append('g').attr('class', 'legend').attr('transform', `translate(${width + 20}, 0)`);
-    legend.selectAll('.legend-item')
-        .data(seriesList)
-        .join('g')
-        .attr('class', 'legend-item')
-        .call(g => {
-            g.append('rect')
-                .attr('width', 12)
-                .attr('height', 12)
-                .attr('y', (d, i) => i * 20)
-                .attr('fill', d => color(d.entity));
-            g.append('text')
-                .attr('x', 16)
-                .attr('y', (d, i) => i * 20 + 10)
-                .attr('fill', '#ddd')
-                .style('font-size', '11px')
-                .text(d => d.entity);
-        });
-}
-
+/**
+ * Atualiza o Ranking de Impacto (Gráfico de Barras)
+ * @param {Array} data - Dados vindos do DuckDB { Entity, Emission }
+ */
 export function updateBarChart(data) {
-    const margin = { top: 10, right: 30, bottom: 30, left: 100 };
-    const width = 400 - margin.left - margin.right;
-    const height = 300 - margin.top - margin.bottom;
+    const container = d3.select("#bar-chart-container");
+    
+    // Obtém dimensões dinâmicas do container
+    const margin = { top: 20, right: 30, bottom: 40, left: 120 };
+    const width = (container.node()?.clientWidth || 400) - margin.left - margin.right;
+    const height = 350 - margin.top - margin.bottom;
 
-    const container = d3.select('#bar-chart-container');
-    let svgElement = container.select('svg');
-
-    if (svgElement.empty()) {
-        svgElement = container.append('svg')
-            .attr('width', '100%')
-            .attr('height', '100%')
-            .attr('viewBox', `0 0 ${width + margin.left + margin.right} ${height + margin.top + margin.bottom}`)
-            .append('g')
-            .attr('transform', `translate(${margin.left},${margin.top})`);
-        
-        svgElement.append('g').attr('class', 'y-axis');
-        svgElement.append('g').attr('class', 'x-axis').attr('transform', `translate(0,${height})`);
+    // Limpa ou cria o SVG
+    let svg = container.select("svg");
+    if (svg.empty()) {
+        svg = container.append("svg")
+            .attr("viewBox", `0 0 ${width + margin.left + margin.right} ${height + margin.top + margin.bottom}`)
+            .attr("preserveAspectRatio", "xMidYMid meet")
+            .append("g")
+            .attr("transform", `translate(${margin.left},${margin.top})`);
     } else {
-        svgElement = svgElement.select('g');
+        svg = svg.select("g");
     }
+
+    // Escalas
+    const x = d3.scaleLinear()
+        .domain([0, d3.max(data, d => d.Emission) || 100])
+        .range([0, width]);
 
     const y = d3.scaleBand()
         .domain(data.map(d => d.Entity))
         .range([0, height])
         .padding(0.2);
 
-    const x = d3.scaleLinear()
-        .domain([0, d3.max(data, d => +d.Emission)])
-        .range([0, width]);
+    // Renderização dos Eixos
+    svg.selectAll(".axis").remove();
+    
+    svg.append("g")
+        .attr("class", "axis y-axis")
+        .call(d3.axisLeft(y).tickSize(0).tickPadding(10))
+        .selectAll("text")
+        .style("fill", "#aaa")
+        .style("font-size", "12px");
 
-    svgElement.select('.y-axis').transition().duration(500).call(d3.axisLeft(y));
-    svgElement.select('.x-axis').transition().duration(500).call(d3.axisBottom(x).ticks(3));
+    svg.append("g")
+        .attr("class", "axis x-axis")
+        .attr("transform", `translate(0,${height})`)
+        .call(d3.axisBottom(x).ticks(5).tickFormat(d => d + "%"))
+        .selectAll("text")
+        .style("fill", "#888");
 
-    // Legenda do eixo X
-    if (svgElement.select('.axis-title-x').empty()) {
-        svgElement.append('text').attr('class', 'axis-title-x axis-label').attr('text-anchor', 'end')
-            .attr('x', width).attr('y', height + 25).text('Emissão Acumulada (%)');
-    }
+    // Barras
+    const bars = svg.selectAll(".bar")
+        .data(data, d => d.Entity);
 
-    const barTooltip = d3.select('body').selectAll('.bar-tooltip').data([null])
-        .join(
-            enter => enter.append('div')
-                .attr('class', 'bar-tooltip')
-                .style('position', 'absolute')
-                .style('pointer-events', 'none')
-                .style('background', 'rgba(0, 0, 0, 0.92)')
-                .style('border', '1px solid #444')
-                .style('border-radius', '6px')
-                .style('padding', '8px 12px')
-                .style('color', '#fff')
-                .style('font-size', '12px')
-                .style('box-shadow', '0 2px 20px rgba(0,0,0,0.4)')
-                .style('z-index', '1000')
-                .style('display', 'none'),
-            update => update.style('display', 'none')
-        );
+    // Saída
+    bars.exit().remove();
 
-    svgElement.selectAll('.bar')
-        .data(data, d => d.Entity)
-        .join(
-            enter => enter.append('rect')
-                .attr('class', 'bar')
-                .attr('x', 0)
-                .attr('y', d => y(d.Entity))
-                .attr('height', y.bandwidth())
-                .attr('fill', '#e41a1c')
-                .attr('width', 0)
-                .style('cursor', 'pointer')
-                .on('mouseover', function(event, d) {
-                    d3.select(this).transition().duration(150).attr('fill', '#ff5b5b');
-                    barTooltip.style('display', 'block')
-                        .html(`<strong>${d.Entity}</strong><br/>Emissão: ${formatEmission(d.Emission)}`);
-                })
-                .on('mousemove', function(event) {
-                    barTooltip.style('left', `${event.pageX + 12}px`).style('top', `${event.pageY + 12}px`);
-                })
-                .on('mouseout', function() {
-                    d3.select(this).transition().duration(150).attr('fill', '#e41a1c');
-                    barTooltip.style('display', 'none');
-                })
-                .call(enter => enter.transition().duration(700).attr('width', d => x(d.Emission))),
-            update => update
-                .attr('y', d => y(d.Entity))
-                .attr('height', y.bandwidth())
-                .on('mouseover', function(event, d) {
-                    d3.select(this).transition().duration(150).attr('fill', '#ff5b5b');
-                    barTooltip.style('display', 'block')
-                        .html(`<strong>${d.Entity}</strong><br/>Emissão: ${formatEmission(d.Emission)}`);
-                })
-                .on('mousemove', function(event) {
-                    barTooltip.style('left', `${event.pageX + 12}px`).style('top', `${event.pageY + 12}px`);
-                })
-                .on('mouseout', function() {
-                    d3.select(this).transition().duration(150).attr('fill', '#e41a1c');
-                    barTooltip.style('display', 'none');
-                })
-                .transition().duration(500)
-                .attr('y', d => y(d.Entity))
-                .attr('height', y.bandwidth())
-                .attr('width', d => x(d.Emission)),
-            exit => exit.remove()
-        );
+    // Entrada + Atualização
+    bars.enter()
+        .append("rect")
+        .attr("class", "bar")
+        .attr("fill", "#e41a1c")
+        .attr("rx", 4) // Bordas levemente arredondadas
+        .merge(bars)
+        .on("mouseover", function(event, d) {
+            d3.select(this).attr("fill", "#ff4d4d"); // Destaque visual
+            
+            tooltip.transition().duration(200).style("opacity", 1);
+            tooltip.html(`
+                <div style="border-bottom: 1px solid #444; margin-bottom: 5px; padding-bottom: 5px;">
+                    <strong>${d.Entity}</strong>
+                </div>
+                <span>Emissão Acumulada: </span>
+                <span style="color: #e41a1c; font-weight: bold;">${d.Emission.toFixed(2)}%</span>
+            `)
+            .style("left", (event.pageX + 15) + "px")
+            .style("top", (event.pageY - 28) + "px");
+        })
+        .on("mousemove", function(event) {
+            tooltip.style("left", (event.pageX + 15) + "px")
+                   .style("top", (event.pageY - 28) + "px");
+        })
+        .on("mouseout", function() {
+            d3.select(this).attr("fill", "#e41a1c");
+            tooltip.transition().duration(500).style("opacity", 0);
+        })
+        .transition()
+        .duration(750)
+        .attr("y", d => y(d.Entity))
+        .attr("x", 0)
+        .attr("height", y.bandwidth())
+        .attr("width", d => x(d.Emission));
+
+    console.log("Ranking de Impacto atualizado:", data.length, "países.");
 }
 
-export function updateScatterPlot(data, onCountryClick) {
-    const margin = { top: 20, right: 20, bottom: 40, left: 50 };
-    const width = 500 - margin.left - margin.right;
+let worldData = null;
+
+/**
+ * Implementação de Spike Map Geográfico
+ */
+export async function loadChoroplethMap(data, onSelect) {
+    const container = d3.select("#chart-container");
+    const width = container.node()?.clientWidth || 600;
+    const height = 450;
+
+    let svg = container.select("svg");
+    if (svg.empty()) {
+        svg = container.append("svg")
+            .attr("viewBox", `0 0 ${width} ${height}`)
+            .attr("preserveAspectRatio", "xMidYMid meet");
+        
+        // Camada principal de zoom que conterá o mapa e os espigões
+        const zoomLayer = svg.append("g").attr("class", "zoom-layer");
+
+        zoomLayer.append("g").attr("class", "countries");
+        zoomLayer.append("g").attr("class", "spikes");
+
+        // Configuração do Zoom (feita apenas uma vez na criação do SVG)
+        const zoom = d3.zoom()
+            .scaleExtent([1, 8])
+            .on("zoom", (event) => {
+                const { transform } = event;
+                zoomLayer.attr("transform", transform);
+                
+                // Ajusta as linhas para não ficarem grossas no zoom
+                zoomLayer.select(".countries").selectAll("path")
+                    .attr("stroke-width", 0.5 / transform.k);
+                zoomLayer.select(".spikes").selectAll("path")
+                    .attr("stroke-width", 0.5 / transform.k);
+            });
+
+        svg.call(zoom);
+    }
+
+    const zoomLayer = svg.select(".zoom-layer");
+
+    // Carrega o mapa do mundo (apenas uma vez)
+    if (!worldData) {
+        const response = await fetch('https://cdn.jsdelivr.net/npm/world-atlas@2/countries-110m.json');
+        const topoData = await response.json();
+        worldData = topojson.feature(topoData, topoData.objects.countries);
+    }
+
+    const projection = d3.geoNaturalEarth1()
+        .fitSize([width, height], worldData);
+    const path = d3.geoPath().projection(projection);
+
+    // Desenha os países
+    const countriesGroup = zoomLayer.select(".countries");
+    countriesGroup
+        .selectAll("path")
+        .data(worldData.features)
+        .join("path")
+        .attr("d", path)
+        .attr("fill", "#2a2a2a")
+        .attr("stroke", "#333")
+        .attr("stroke-width", 0.5); // Stroke inicial
+
+    // Função geradora de espigão (Spike)
+    const spike = (length, width = 6) => {
+        return `M${-width / 2},0L0,${-length}L${width / 2},0`;
+    };
+
+    // Escala para a altura dos espigões (ajustável conforme necessidade)
+    const lengthScale = d3.scaleLinear()
+        .domain([0, d3.max(data, d => d.Emission) || 100])
+        .range([0, 150]);
+
+    // Prepara dados: mapeia coordenadas para os países que temos dados no CSV
+    const spikeData = data.map(d => {
+        const feature = worldData.features.find(f => 
+            f.id === d.Code || f.properties.name === d.Entity
+        );
+        return {
+            ...d,
+            centroid: feature ? path.centroid(feature) : null
+        };
+    }).filter(d => d.centroid);
+
+    // Desenha/Atualiza os espigões
+    const spikesGroup = zoomLayer.select(".spikes");
+    const spikes = spikesGroup
+        .selectAll("path")
+        .data(spikeData, d => d.Code);
+
+    spikes.exit().remove();
+
+    spikes.enter()
+        .append("path")
+        .attr("fill", "#e41a1c")
+        .attr("fill-opacity", 0.5)
+        .attr("stroke", "#e41a1c") // Stroke inicial
+        .attr("stroke-width", 0.5)
+        .attr("transform", d => `translate(${d.centroid[0]}, ${d.centroid[1]})`)
+        .on("mouseover", function(event, d) {
+            d3.select(this).attr("fill-opacity", 0.8).attr("stroke-width", 1.5);
+            tooltip.transition().duration(200).style("opacity", 1);
+            tooltip.html(`
+                <div style="border-bottom: 1px solid #444; margin-bottom: 5px; padding-bottom: 5px;">
+                    <strong>${d.Entity}</strong>
+                </div>
+                Acumulado: <strong>${d.Emission.toFixed(2)}%</strong><br/>
+                Tendência: <span style="color: ${d.Delta >= 0 ? '#e41a1c' : '#4caf50'}">
+                    ${(d.Delta || 0).toFixed(4)}
+                </span>
+            `)
+            .style("left", (event.pageX + 10) + "px")
+            .style("top", (event.pageY - 28) + "px");
+        })
+        .on("mouseout", function() {
+            d3.select(this).attr("fill-opacity", 0.5).attr("stroke-width", 0.5);
+            tooltip.transition().duration(200).style("opacity", 0); // Transição mais rápida para o tooltip
+        })
+        .on("click", (event, d) => onSelect(d.Code))
+        .merge(spikes)
+        .transition()
+        .duration(200) // Transição rápida para acompanhar a animação
+        .attr("d", d => spike(lengthScale(d.Emission)));
+
+    // console.log("Spike Map atualizado.");
+}
+
+/**
+ * Evolução Temporal (Gráfico de Linhas com Tooltip interativo)
+ */
+export function updateTimeSeriesChart(seriesList) {
+    const container = d3.select("#line-chart-container");
+    const margin = { top: 20, right: 30, bottom: 40, left: 60 };
+    const width = (container.node()?.clientWidth || 400) - margin.left - margin.right;
     const height = 300 - margin.top - margin.bottom;
 
-    const container = d3.select('#scatter-plot-container');
-    let svgElement = container.select('svg');
-
-    if (svgElement.empty()) {
-        svgElement = container.append('svg')
-            .attr('viewBox', `0 0 ${width + margin.left + margin.right} ${height + margin.top + margin.bottom}`)
-            .append('g')
-            .attr('transform', `translate(${margin.left},${margin.top})`);
-        
-        svgElement.append('g').attr('class', 'x-axis').attr('transform', `translate(0,${height})`);
-        svgElement.append('g').attr('class', 'y-axis');
-        svgElement.append('text').attr('class', 'label').attr('x', width).attr('y', height + 35).attr('text-anchor', 'end').attr('fill', '#888').style('font-size', '10px').text('Participação Acumulada (%)');
-        svgElement.append('text').attr('class', 'label').attr('transform', 'rotate(-90)').attr('y', -40).attr('text-anchor', 'end').attr('fill', '#888').style('font-size', '10px').text('Tendência (Delta Anual)');
+    let svg = container.select("svg");
+    if (svg.empty()) {
+        svg = container.append("svg")
+            .attr("viewBox", `0 0 ${width + margin.left + margin.right} ${height + margin.top + margin.bottom}`)
+            .append("g")
+            .attr("transform", `translate(${margin.left},${margin.top})`);
     } else {
-        svgElement = svgElement.select('g');
+        svg = svg.select("g");
     }
 
-    // Filtrar dados com Delta válido (LAG() retorna NULL para primeiro ano)
-    const validData = data.filter(d => 
-        d.Delta !== null && 
-        d.Delta !== undefined && 
-        d.Emission !== null && 
-        d.Emission !== undefined
-    );
+    const allValues = seriesList.flatMap(s => s.values);
+    if (!allValues.length) return;
+
+    const x = d3.scaleLinear()
+        .domain(d3.extent(allValues, d => d.Year))
+        .range([0, width]);
+
+    const y = d3.scaleLinear()
+        .domain([0, d3.max(allValues, d => d.Emission) || 1])
+        .range([height, 0]);
+
+    svg.selectAll(".axis").remove();
+    svg.append("g")
+        .attr("class", "axis")
+        .attr("transform", `translate(0,${height})`)
+        .call(d3.axisBottom(x).tickFormat(d3.format("d")).ticks(5));
+
+    svg.append("g")
+        .attr("class", "axis")
+        .call(d3.axisLeft(y).ticks(5).tickFormat(d => d + "%"));
+
+    const line = d3.line()
+        .x(d => x(d.Year))
+        .y(d => y(d.Emission));
+
+    const paths = svg.selectAll(".line-path").data(seriesList, d => d.code);
+    paths.exit().remove();
+    paths.enter()
+        .append("path")
+        .attr("class", "line-path")
+        .attr("fill", "none")
+        .attr("stroke", "#e41a1c")
+        .attr("stroke-width", 2)
+        .merge(paths)
+        .transition().duration(750)
+        .attr("d", d => line(d.values));
+
+    // Adiciona círculos para interatividade (Tooltip em pontos da linha)
+    const dotsGroup = svg.selectAll(".dots-group").data(seriesList, d => d.code);
+    dotsGroup.exit().remove();
     
-    if (!validData || validData.length === 0) {
-        console.warn('[Scatter] Sem dados válidos para este ano');
-        return;
+    const dotsMerged = dotsGroup.enter()
+        .append("g")
+        .attr("class", "dots-group")
+        .merge(dotsGroup);
+
+    const circles = dotsMerged.selectAll("circle")
+        .data(d => d.values.map(v => ({ ...v, entity: d.entity })), d => d.Year);
+
+    circles.exit().remove();
+    circles.enter()
+        .append("circle")
+        .attr("r", 4)
+        .attr("fill", "#e41a1c")
+        .style("opacity", 0) // Escondidos por padrão
+        .style("cursor", "pointer")
+        .merge(circles)
+        .on("mouseover", function(event, d) {
+            d3.select(this).style("opacity", 1).attr("r", 6);
+            tooltip.transition().duration(200).style("opacity", 1);
+            tooltip.html(`
+                <div style="border-bottom: 1px solid #444; margin-bottom: 5px; padding-bottom: 5px;">
+                    <strong>${d.entity}</strong>
+                </div>
+                Ano: <strong>${d.Year}</strong><br/>
+                Emissão: <span style="color: #e41a1c; font-weight: bold;">${d.Emission.toFixed(2)}%</span>
+            `)
+            .style("left", (event.pageX + 15) + "px")
+            .style("top", (event.pageY - 28) + "px");
+        })
+        .on("mouseout", function() {
+            d3.select(this).style("opacity", 0).attr("r", 4);
+            tooltip.transition().duration(500).style("opacity", 0);
+        })
+        .transition().duration(750)
+        .attr("cx", d => x(d.Year))
+        .attr("cy", d => y(d.Emission));
+}
+
+/**
+ * Correlação: Acumulado vs. Tendência (Scatter Plot)
+ */
+export function updateScatterPlot(data, onSelect) {
+    const container = d3.select("#scatter-plot-container");
+    const margin = { top: 20, right: 30, bottom: 40, left: 60 };
+    const width = (container.node()?.clientWidth || 400) - margin.left - margin.right;
+    const height = 300 - margin.top - margin.bottom;
+
+    let svg = container.select("svg");
+    if (svg.empty()) {
+        svg = container.append("svg")
+            .attr("viewBox", `0 0 ${width + margin.left + margin.right} ${height + margin.top + margin.bottom}`)
+            .append("g")
+            .attr("transform", `translate(${margin.left},${margin.top})`);
+    } else {
+        svg = svg.select("g");
     }
 
     const x = d3.scaleLinear()
-        .domain([0, d3.max(validData, d => d.Emission)])
+        .domain([0, d3.max(data, d => d.Emission) || 1])
         .range([0, width]);
-    
-    const y = d3.scaleLinear()
-        .domain(d3.extent(validData, d => d.Delta))
-        .nice()
-        .range([height, 0]);
 
-    svgElement.select('.x-axis').transition().duration(500).call(d3.axisBottom(x).ticks(5));
-    svgElement.select('.y-axis').transition().duration(500).call(d3.axisLeft(y).ticks(5));
+    const y = d3.scaleLinear().domain([d3.min(data, d => d.Delta) || -0.01, d3.max(data, d => d.Delta) || 0.01]).range([height, 0]);
 
-    const tooltip = d3.select('body').selectAll('.scatter-tooltip').data([null]);
-    tooltip.enter()
-        .append('div')
-        .attr('class', 'scatter-tooltip')
-        .style('position', 'absolute')
-        .style('pointer-events', 'none')
-        .style('background', 'rgba(0, 0, 0, 0.88)')
-        .style('border', '1px solid #444')
-        .style('border-radius', '6px')
-        .style('padding', '8px 10px')
-        .style('color', '#fff')
-        .style('font-size', '12px')
-        .style('z-index', '1000');
+    svg.selectAll(".axis").remove();
+    svg.selectAll(".grid-line").remove();
 
-    svgElement.selectAll('.dot')
-        .data(validData, d => d.Code)
-        .join(
-            enter => enter.append('circle')
-                .attr('class', 'dot')
-                .attr('r', 5)
-                .attr('fill', '#e41a1c')
-                .attr('opacity', 0.6)
-                .attr('cx', d => x(d.Emission))
-                .attr('cy', d => y(d.Delta))
-                .on('mouseover', function(event, d) {
-                    d3.select(this).attr('opacity', 1).attr('stroke', '#fff');
-                    d3.select(`#${d.Code}`).style('stroke', '#fff').style('stroke-width', '2px');
-                    d3.select('.scatter-tooltip')
-                        .style('display', 'block')
-                        .html(`<strong>${d.Entity}</strong><br/>Emissão: ${formatEmission(d.Emission)}`);
-                })
-                .on('mousemove', function(event) {
-                    d3.select('.scatter-tooltip')
-                        .style('left', `${event.pageX + 12}px`)
-                        .style('top', `${event.pageY + 12}px`);
-                })
-                .on('mouseout', function(event, d) {
-                    d3.select(this).attr('opacity', 0.6).attr('stroke', null);
-                    d3.select(`#${d.Code}`).style('stroke', null);
-                    d3.select('.scatter-tooltip').style('display', 'none');
-                })
-                .on('click', (e, d) => onCountryClick(d.Code)),
-            update => update.transition()
-                .attr('cx', d => x(d.Emission))
-                .attr('cy', d => y(d.Delta)),
-            exit => exit.remove()
-        );
-}
+    // Adiciona uma linha de referência no Y=0 para separar quem sobe de quem desce
+    svg.append("line")
+        .attr("class", "grid-line")
+        .attr("x1", 0)
+        .attr("x2", width)
+        .attr("y1", y(0))
+        .attr("y2", y(0))
+        .attr("stroke", "#444")
+        .attr("stroke-dasharray", "4,4");
 
-export async function loadChoroplethMap(data, onCountryClick) {
-    const container = d3.select('#chart-container');
-    const legendContainer = d3.select('#map-legend');
+    svg.append("g").attr("class", "axis").attr("transform", `translate(0,${height})`)
+        .call(d3.axisBottom(x).ticks(5).tickFormat(d => d + "%"));
+    svg.append("g").attr("class", "axis").call(d3.axisLeft(y).ticks(5).tickFormat(d3.format("+.2f")));
 
-    let svg = container.select('svg');
-    const isFirstLoad = svg.empty();
-
-    if (isFirstLoad) {
-        try {
-            const response = await fetch('/share-of-cumulative-co2.svg');
-            if (!response.ok) throw new Error(`HTTP ${response.status}: SVG não encontrado`);
-
-            const svgText = await response.text();
-            const parser = new DOMParser();
-            const svgDoc = parser.parseFromString(svgText, 'image/svg+xml');
-            if (svgDoc.getElementsByTagName('parsererror').length > 0) {
-                throw new Error('SVG inválido ou mal-formado');
-            }
-
-            container.html('');
-            const svgNode = svgDoc.documentElement.cloneNode(true);
-            svgNode.setAttribute('viewBox', svgNode.getAttribute('viewBox') || '0 0 1000 600');
-            svgNode.setAttribute('preserveAspectRatio', 'xMidYMid meet');
-            svgNode.setAttribute('class', 'choropleth-map');
-
-            const wrapper = document.createElement('div');
-            wrapper.style.width = '100%';
-            wrapper.style.height = '100%';
-            wrapper.style.overflow = 'hidden';
-            wrapper.appendChild(svgNode);
-
-            container.node().appendChild(wrapper);
-            svg = d3.select(svgNode);
-
-            svg.selectAll('text, title, desc, metadata, defs').remove();
-
-            const g = svg.append('g').attr('class', 'map-group');
-            svg.selectAll('*:not(g.map-group)').each(function() {
-                if (d3.select(this).attr('class') !== 'map-group') {
-                    g.node().appendChild(this);
-                }
-            });
-
-            const zoom = d3.zoom()
-                .scaleExtent([1, 8])
-                .on('zoom', (event) => {
-                    g.attr('transform', event.transform);
-                });
-
-            svg.call(zoom);
-            svg.style('cursor', 'grab');
-
-            console.log('[Map] SVG injetado com sucesso no DOM');
-        } catch (error) {
-            console.error('[Map] Erro ao carregar SVG:', error);
-            container.html(`<div class="map-error"><strong>Erro:</strong> ${error.message}<br/><small>Verifique se /share-of-cumulative-co2.svg existe.</small></div>`);
-            return;
-        }
-    }
-
-    const codeMap = new Map(data.map(d => [d.Code.toUpperCase(), d]));
-    const thresholds = [0, 0.1, 0.5, 1, 2, 5, 10, 20];
-    const colors = d3.schemeYlOrRd[9];
-    const colorScale = d3.scaleThreshold().domain(thresholds).range(colors);
-
-    if (legendContainer.select('svg').empty()) {
-        const lW = 280;
-        const cellW = lW / colors.length;
-        const lSvg = legendContainer.append('svg').attr('viewBox', `0 0 ${lW} 40`).attr('class', 'legend-svg');
-        lSvg.selectAll('rect').data(colors).join('rect')
-            .attr('x', (d, i) => i * cellW)
-            .attr('width', cellW)
-            .attr('height', 10)
-            .attr('fill', d => d);
-        const xL = d3.scaleLinear().domain([0, 20]).range([0, lW]);
-        lSvg.append('g').attr('transform', 'translate(0,10)')
-            .call(d3.axisBottom(xL).tickValues(thresholds).tickFormat(d => d + '%'))
-            .style('color', '#888')
-            .style('font-size', '8px')
-            .select('.domain').remove();
-    }
-
-    let tooltip = d3.select('.map-tooltip');
-    if (tooltip.empty()) {
-        tooltip = d3.select('body').append('div').attr('class', 'map-tooltip').style('display', 'none');
-    }
-
-    function isValidISO3(code) {
-        return typeof code === 'string' && /^[A-Z]{3}$/.test(code.trim().toUpperCase());
-    }
-
-    const mapGroup = svg.select('g.map-group');
-    const countries = mapGroup.selectAll('path[id], g[id], polygon[id]').filter(function() {
-        const id = d3.select(this).attr('id');
-        return id && isValidISO3(id);
-    });
-
-    console.log(`[Map] ${countries.size} países encontrados no SVG`);
-
-    countries
-        .attr('stroke', 'rgba(255,255,255,0.1)')
-        .attr('stroke-width', 0.5)
-        .style('cursor', 'pointer');
-
-    console.log(`[Map] Iniciando atribuição de event listeners...`);
-
-    // Try attaching event handlers with error handling
-    try {
-        countries
-            .on('mouseover', function(event) {
-                // DEBUG: Add visible marker
-                const debugMarker = document.getElementById('hover-debug-marker');
-                if (debugMarker) debugMarker.remove();
-                const marker = document.createElement('div');
-                marker.id = 'hover-debug-marker';
-                marker.textContent = 'HOVER DETECTED';
-                marker.style.cssText = 'position: fixed; top: 120px; right: 20px; background: lime; color: black; padding: 10px; z-index: 9999; border-radius: 4px; font-weight: bold;';
-                document.body.appendChild(marker);
-
-                const iso = d3.select(this).attr('id').toUpperCase();
-                const entry = codeMap.get(iso);
-                const val = entry ? entry.Emission : null;
-                const hoveredElement = d3.select(this);
-
-                console.log(`[Map] Mouseover fired: ${iso}`);
-
-                // Dim all other countries
-                countries.transition().duration(150)
-                    .style('opacity', 0.2);
-
-                // Highlight hovered
-                hoveredElement.transition().duration(150)
-                    .style('opacity', 1)
-                    .attr('stroke', '#000000')
-                    .attr('stroke-width', 2);
-                
-                hoveredElement.raise();
-
-                // Tooltip
-                tooltip.style('display', 'block')
-                    .html(`
-                        <strong>${entry ? entry.Entity : iso}</strong><br/>
-                        <em>Emissão:</em> ${formatEmission(val)}<br/>
-                        <em>Tendência:</em> ${entry && entry.Delta !== null && entry.Delta !== undefined ? formatPercent(entry.Delta) + '%' : 'N/A'}
-                    `);
-            })
-            .on('mousemove', function(event) {
-                tooltip
-                    .style('left', `${event.pageX + 14}px`)
-                    .style('top', `${event.pageY + 14}px`);
-            })
-            .on('mouseout', function() {
-                const iso = d3.select(this).attr('id').toUpperCase();
-                const entry = codeMap.get(iso);
-                const val = entry ? entry.Emission : null;
-
-                console.log(`[Map] Mouseout fired: ${iso}`);
-
-                // Restore all
-                countries.transition().duration(150)
-                    .style('opacity', 1)
-                    .attr('fill', function() {
-                        const countryISO = d3.select(this).attr('id').toUpperCase();
-                        const countryEntry = codeMap.get(countryISO);
-                        const countryVal = countryEntry ? countryEntry.Emission : null;
-                        return (countryVal === null || countryVal === 0) ? '#2a2a2a' : colorScale(countryVal);
-                    })
-                    .attr('stroke', 'rgba(255,255,255,0.1)')
-                    .attr('stroke-width', 0.5);
-
-                tooltip.style('display', 'none');
-            })
-            .on('click', function() {
-                const iso = d3.select(this).attr('id').toUpperCase();
-                console.log(`[Map] Clique: ${iso}`);
-                onCountryClick(iso);
-            });
-        
-        console.log(`[Map] Event handlers attached com sucesso`);
-    } catch (error) {
-        console.error(`[Map] Erro ao atribuir handlers:`, error);
-    }
-
-    svg.style('pointer-events', 'all');
+    const dots = svg.selectAll(".dot").data(data, d => d.Code);
+    dots.exit().remove();
+    dots.enter()
+        .append("circle")
+        .attr("class", "dot")
+        .attr("r", 4)
+        .attr("fill", "#e41a1c")
+        .attr("opacity", 0.4) // Reduzido para melhorar visualização de pontos grudados
+        .on("mouseover", (event, d) => {
+            tooltip.transition().duration(200).style("opacity", 1);
+            tooltip.html(`
+                <div style="border-bottom: 1px solid #444; margin-bottom: 5px; padding-bottom: 5px;">
+                    <strong>${d.Entity}</strong>
+                </div>
+                Acumulado: <strong>${d.Emission.toFixed(2)}%</strong><br/>
+                Variação Anual: <span style="color: ${d.Delta >= 0 ? '#e41a1c' : '#4caf50'}">${(d.Delta || 0).toFixed(4)}</span>
+            `)
+            .style("left", (event.pageX + 15) + "px").style("top", (event.pageY - 28) + "px");
+        })
+        .on("mouseout", () => tooltip.transition().duration(500).style("opacity", 0))
+        .on("click", (event, d) => onSelect(d.Code))
+        .merge(dots)
+        .transition().duration(800)
+        .attr("cx", d => x(d.Emission))
+        .attr("cy", d => y(d.Delta || 0))
+        .attr("r", 4);
 }

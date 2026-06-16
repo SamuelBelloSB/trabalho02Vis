@@ -1,0 +1,9 @@
+{
+  "short_name": "CO2Vis",
+  "name": "Visualização de Emissões CO2",
+  "icons": [],
+  "start_url": ".",
+  "display": "standalone",
+  "theme_color": "#121212",
+  "background_color": "#121212"
+}

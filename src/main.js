@@ -11,7 +11,8 @@ let appState = {
     maxYear: 2021,
     mapData: [],
     seriesData: [],
-    isPlaying: false
+    isPlaying: false,
+    availableCountries: [] // Cache para busca
 };
 
 const queryCache = {
@@ -248,10 +249,18 @@ function togglePlay() {
     btn.textContent = appState.isPlaying ? 'STOP' : 'PLAY';
     
     if (appState.isPlaying) {
+        // Se o usuário apertar PLAY e já estivermos no fim, volta para o início automaticamente
+        if (appState.selectedYear >= appState.maxYear) {
+            appState.selectedYear = appState.minYear;
+            updateUIFromState();
+            updateDashboard();
+        }
+
         const step = () => {
             if (!appState.isPlaying) return;
             if (appState.selectedYear >= appState.maxYear) {
-                togglePlay();
+                appState.isPlaying = false;
+                btn.textContent = 'PLAY';
                 return;
             }
             appState.selectedYear++;
@@ -270,9 +279,14 @@ function updateUIFromState() {
     yearDisplay.textContent = appState.selectedYear;
 }
 
-function toggleCountrySelection(countryCode) {
+function toggleCountrySelection(countryCode, forceAdd = false) {
     const currentIndex = appState.selectedCountries.indexOf(countryCode);
     if (currentIndex >= 0) {
+        // Se forceAdd for true (vindo do select), não remove se já existir
+        if (forceAdd) {
+            appState.selectedCountry = countryCode;
+            return;
+        }
         if (appState.selectedCountries.length > 1) {
             appState.selectedCountries.splice(currentIndex, 1);
         }
@@ -292,19 +306,43 @@ async function loadAvailableCountries() {
     return result.toArray().map(r => r.toJSON());
 }
 
-function populateCountrySelect(countries) {
+function populateCountrySelect(countries, filter = '') {
     const select = document.getElementById('countrySelect');
     if (!select) return;
+    
+    appState.availableCountries = countries;
     select.innerHTML = '';
 
-    countries.forEach(country => {
-        const option = document.createElement('option');
-        option.value = country.Code;
-        option.textContent = `${country.Entity} (${country.Code})`;
-        if (appState.selectedCountries.includes(country.Code)) {
-            option.selected = true;
-        }
-        select.appendChild(option);
+    countries
+        .filter(c => c.Entity.toLowerCase().includes(filter.toLowerCase()) || c.Code.toLowerCase().includes(filter.toLowerCase()))
+        .forEach(country => {
+            const option = document.createElement('option');
+            option.value = country.Code;
+            option.textContent = `${country.Entity} (${country.Code})`;
+            select.appendChild(option);
+        });
+    
+    renderSelectedTags();
+}
+
+function renderSelectedTags() {
+    const list = document.getElementById('selectedCountriesList');
+    if (!list) return;
+    list.innerHTML = '';
+
+    appState.selectedCountries.forEach(code => {
+        const country = appState.availableCountries.find(c => c.Code === code);
+        const name = country ? country.Entity : code;
+        
+        const pill = document.createElement('div');
+        pill.className = 'country-pill';
+        pill.innerHTML = `${name} <span style="font-weight:bold">&times;</span>`;
+        pill.onclick = async () => {
+            toggleCountrySelection(code);
+            await updateCountrySeries();
+            renderSelectedTags();
+        };
+        list.appendChild(pill);
     });
 }
 
@@ -312,7 +350,18 @@ async function updateCountrySeries() {
     const selected = appState.selectedCountries.length > 0 ? appState.selectedCountries : [appState.selectedCountry];
     const seriesList = await getSeriesDataList(selected);
     const names = seriesList.map(series => series.entity).filter(Boolean);
-    document.getElementById('countryName').textContent = names.length ? names.join(' / ') : 'Nenhum país selecionado';
+    
+    const countryNameEl = document.getElementById('countryName');
+    if (names.length > 2) {
+        countryNameEl.textContent = `${names.length} países selecionados`;
+        countryNameEl.title = names.join(', ');
+        countryNameEl.style.textDecoration = "underline dotted";
+    } else {
+        countryNameEl.textContent = names.length ? names.join(' / ') : 'Nenhum país selecionado';
+        countryNameEl.title = "";
+        countryNameEl.style.textDecoration = "none";
+    }
+
     updateTimeSeriesChart(seriesList);
 }
 
@@ -356,6 +405,7 @@ async function handleCountrySelection(countryCode) {
     try {
         ensureDatabase();
         toggleCountrySelection(countryCode);
+        renderSelectedTags();
         await updateCountrySeries();
     } catch (error) {
         console.error('Erro ao seleccionar país:', error);
@@ -383,7 +433,9 @@ window.onload = async () => {
     const exportYearCsvBtn = document.getElementById('exportYearCsvBtn');
     const presetButtons = document.querySelectorAll('[data-preset-year]');
     const countrySelect = document.getElementById('countrySelect');
+    const countrySearch = document.getElementById('countrySearch');
     const applyCountrySelectionBtn = document.getElementById('applyCountrySelection');
+    const clearSelectionBtn = document.getElementById('clearSelectionBtn');
 
     if (playBtn) {
         playBtn.onclick = togglePlay;
@@ -419,12 +471,30 @@ window.onload = async () => {
         });
     });
 
+    if (countrySearch) {
+        countrySearch.oninput = (e) => {
+            populateCountrySelect(appState.availableCountries, e.target.value);
+        };
+    }
+
+    if (clearSelectionBtn) {
+        clearSelectionBtn.onclick = async () => {
+            appState.selectedCountries = ['USA'];
+            appState.selectedCountry = 'USA';
+            await updateCountrySeries();
+            renderSelectedTags();
+        };
+    }
+
     if (applyCountrySelectionBtn) {
         applyCountrySelectionBtn.onclick = async () => {
             const selectedOptions = Array.from(countrySelect.selectedOptions).map(option => option.value);
             if (selectedOptions.length > 0) {
-                appState.selectedCountries = selectedOptions;
+                selectedOptions.forEach(code => {
+                    if (!appState.selectedCountries.includes(code)) appState.selectedCountries.push(code);
+                });
                 await updateCountrySeries();
+                renderSelectedTags();
             }
         };
     }
@@ -458,18 +528,20 @@ window.onload = async () => {
         countrySelect.addEventListener('dblclick', async () => {
             const selectedOptions = Array.from(countrySelect.selectedOptions).map(option => option.value);
             if (selectedOptions.length > 0) {
-                appState.selectedCountries = selectedOptions;
+                selectedOptions.forEach(code => toggleCountrySelection(code, true));
                 await updateCountrySeries();
+                renderSelectedTags();
             }
         });
     }
 
-    if ('serviceWorker' in navigator) {
-        try {
-            await navigator.serviceWorker.register('/sw.js');
-            console.log('Service Worker registrado com sucesso.');
-        } catch (err) {
-            console.warn('Falha ao registrar Service Worker:', err);
-        }
-    }
+    // Comentado para evitar erros de MIME type se sw.js não existir
+    // if ('serviceWorker' in navigator) {
+    //     try {
+    //         await navigator.serviceWorker.register('/sw.js');
+    //         console.log('Service Worker registrado com sucesso.');
+    //     } catch (err) {
+    //         console.warn('Falha ao registrar Service Worker:', err);
+    //     }
+    // }
 };
