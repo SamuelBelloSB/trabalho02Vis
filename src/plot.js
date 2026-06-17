@@ -231,7 +231,7 @@ export async function loadChoroplethMap(data, onSelect) {
 }
 
 /**
- * Evolução Temporal (Gráfico de Linhas com Tooltip interativo)
+ * Evolução Temporal (Gráfico de Áreas com Tooltip interativo)
  */
 export function updateTimeSeriesChart(seriesList) {
     const container = d3.select("#line-chart-container");
@@ -270,23 +270,61 @@ export function updateTimeSeriesChart(seriesList) {
         .attr("class", "axis")
         .call(d3.axisLeft(y).ticks(5).tickFormat(d => d + "%"));
 
-    const line = d3.line()
-        .x(d => x(d.Year))
-        .y(d => y(d.Emission));
+    // Escala de cores para as áreas
+    const colorScale = d3.scaleOrdinal()
+        .domain(seriesList.map(d => d.code))
+        .range(["#e41a1c", "#4caf50", "#1f77b4", "#ff7f0e", "#9467bd", "#8c564b"]);
 
-    const paths = svg.selectAll(".line-path").data(seriesList, d => d.code);
+    const area = d3.area()
+        .x(d => x(d.Year))
+        .y0(height)
+        .y1(d => y(d.Emission));
+
+    // Cria um defs para gradientes se não existir
+    let defs = svg.select("defs");
+    if (defs.empty()) {
+        defs = svg.append("defs");
+    }
+
+    // Remove gradientes antigos
+    defs.selectAll("linearGradient").remove();
+
+    // Cria gradientes para cada série
+    seriesList.forEach((series, index) => {
+        const color = colorScale(series.code);
+        const gradient = defs.append("linearGradient")
+            .attr("id", `gradient-${series.code}`)
+            .attr("x1", "0%")
+            .attr("y1", "0%")
+            .attr("x2", "0%")
+            .attr("y2", "100%");
+        
+        gradient.append("stop")
+            .attr("offset", "0%")
+            .attr("stop-color", color)
+            .attr("stop-opacity", 0.7);
+        
+        gradient.append("stop")
+            .attr("offset", "100%")
+            .attr("stop-color", color)
+            .attr("stop-opacity", 0.1);
+    });
+
+    const paths = svg.selectAll(".area-path").data(seriesList, d => d.code);
     paths.exit().remove();
     paths.enter()
         .append("path")
-        .attr("class", "line-path")
-        .attr("fill", "none")
-        .attr("stroke", "#e41a1c")
+        .attr("class", "area-path")
+        .attr("fill", d => `url(#gradient-${d.code})`)
+        .attr("stroke", d => colorScale(d.code))
         .attr("stroke-width", 2)
+        .attr("stroke-linejoin", "round")
+        .attr("stroke-linecap", "round")
         .merge(paths)
         .transition().duration(750)
-        .attr("d", d => line(d.values));
+        .attr("d", d => area(d.values));
 
-    // Adiciona círculos para interatividade (Tooltip em pontos da linha)
+    // Adiciona círculos para interatividade (Tooltip em pontos da área)
     const dotsGroup = svg.selectAll(".dots-group").data(seriesList, d => d.code);
     dotsGroup.exit().remove();
     
@@ -296,13 +334,13 @@ export function updateTimeSeriesChart(seriesList) {
         .merge(dotsGroup);
 
     const circles = dotsMerged.selectAll("circle")
-        .data(d => d.values.map(v => ({ ...v, entity: d.entity })), d => d.Year);
+        .data(d => d.values.map(v => ({ ...v, entity: d.entity, code: d.code })), d => d.Year);
 
     circles.exit().remove();
     circles.enter()
         .append("circle")
         .attr("r", 4)
-        .attr("fill", "#e41a1c")
+        .attr("fill", d => colorScale(d.code))
         .style("opacity", 0) // Escondidos por padrão
         .style("cursor", "pointer")
         .merge(circles)
@@ -314,7 +352,7 @@ export function updateTimeSeriesChart(seriesList) {
                     <strong>${d.entity}</strong>
                 </div>
                 Ano: <strong>${d.Year}</strong><br/>
-                Emissão: <span style="color: #e41a1c; font-weight: bold;">${d.Emission.toFixed(2)}%</span>
+                Emissão: <span style="color: ${colorScale(d.code)}; font-weight: bold;">${d.Emission.toFixed(2)}%</span>
             `)
             .style("left", (event.pageX + 15) + "px")
             .style("top", (event.pageY - 28) + "px");
@@ -353,6 +391,16 @@ export function updateScatterPlot(data, onSelect) {
 
     const y = d3.scaleLinear().domain([d3.min(data, d => d.Delta) || -0.01, d3.max(data, d => d.Delta) || 0.01]).range([height, 0]);
 
+    // Escala de cores baseada no acúmulo de emissões (vermelho claro a vermelho intenso)
+    const colorScale = d3.scaleLinear()
+        .domain([0, d3.max(data, d => d.Emission) || 1])
+        .range(["#ffcccc", "#e41a1c"]); // Vermelho claro a vermelho intenso
+
+    // Escala de tamanho do círculo baseada no acúmulo de emissões
+    const radiusScale = d3.scaleLinear()
+        .domain([0, d3.max(data, d => d.Emission) || 1])
+        .range([3, 12]); // De 3 a 12 de raio
+
     svg.selectAll(".axis").remove();
     svg.selectAll(".grid-line").remove();
 
@@ -375,10 +423,10 @@ export function updateScatterPlot(data, onSelect) {
     dots.enter()
         .append("circle")
         .attr("class", "dot")
-        .attr("r", 4)
-        .attr("fill", "#e41a1c")
-        .attr("opacity", 0.4) // Reduzido para melhorar visualização de pontos grudados
-        .on("mouseover", (event, d) => {
+        .attr("fill", d => colorScale(d.Emission))
+        .attr("opacity", 0.7)
+        .on("mouseover", function(event, d) {
+            d3.select(this).attr("opacity", 1);
             tooltip.transition().duration(200).style("opacity", 1);
             tooltip.html(`
                 <div style="border-bottom: 1px solid #444; margin-bottom: 5px; padding-bottom: 5px;">
@@ -389,13 +437,17 @@ export function updateScatterPlot(data, onSelect) {
             `)
             .style("left", (event.pageX + 15) + "px").style("top", (event.pageY - 28) + "px");
         })
-        .on("mouseout", () => tooltip.transition().duration(500).style("opacity", 0))
+        .on("mouseout", function() {
+            d3.select(this).attr("opacity", 0.7);
+            tooltip.transition().duration(500).style("opacity", 0);
+        })
         .on("click", (event, d) => onSelect(d.Code))
         .merge(dots)
         .transition().duration(800)
         .attr("cx", d => x(d.Emission))
         .attr("cy", d => y(d.Delta || 0))
-        .attr("r", 4);
+        .attr("r", d => radiusScale(d.Emission))
+        .attr("fill", d => colorScale(d.Emission));
 }
 
 /**
