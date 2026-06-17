@@ -1,7 +1,7 @@
 # Carbon Atlas: Sistema Interativo de Exploração de Emissões de CO₂
 
 **Disciplina:** Design de Sistemas de Visualização Interativos  
-**Alunos:** Danilo Monteiro · Samuel [Sobrenome]  
+**Alunos:** Danilo Murilo  · Samuel Bello  
 **Dataset:** OWID CO₂ and Greenhouse Gas Emissions Dataset  
 **Tecnologias:** D3.js v7 · DuckDB-WASM
 
@@ -158,7 +158,21 @@ D3 `join()` com funções `enter/update/exit` separadas garante que apenas os el
 
 ---
 
-## 5. Referências
+## 5. Trade-Offs
+
+- Encontramos falhas na exibição do eixo X das visualizações ao executar a animação de passagem de tempo. A visualização aplica um efeito de zoom in, que prejudica a leitura do eixo X. Atribuímos essa falha ao `.transform` e `translate()`, mas dentro do período de desenvolvimento do trabalho não conseguimos solucionar.
+
+---
+
+## 6. Melhorias Futuras
+
+- Queremos correlacionar os dados de emissões de CO₂ com os dados sobre eficiência energética. Mas devido a grande dispariedade dos dados em questão, não conseguimos em tempo hábil solucionar esse problema com os datasets que tínhamos disponíveis.
+
+- Queremos correlacionar os dados de emissões de CO₂ com os dados sobre Taxa Geométrica de Crescimento Anual (TGCA) e renda per capita. Mas também não encontramos datasets sobre informações globais e de boa qualidade.
+
+---
+
+## 7. Referências
 
 - MUNZNER, Tamara. *Visualization Analysis and Design*. CRC Press, 2014.
 - RITCHIE, H.; ROSADO, P.; ROSER, M. *Our World in Data — CO₂ and Greenhouse Gas Emissions*. 2023. Disponível em: ourworldindata.org/co2-and-greenhouse-gas-emissions

@@ -249,6 +249,10 @@ export function updateTimeSeriesChart(seriesList) {
         svg = svg.select("g");
     }
 
+    // Estado do zoom
+    let zoomScale = 1;
+    let zoomTranslateY = 0;
+
     const allValues = seriesList.flatMap(s => s.values);
     if (!allValues.length) return;
 
@@ -385,6 +389,10 @@ export function updateScatterPlot(data, onSelect) {
         svg = svg.select("g");
     }
 
+    // Estado do zoom
+    let zoomScaleX = 1;
+    let zoomScaleY = 1;
+
     const x = d3.scaleLinear()
         .domain([0, d3.max(data, d => d.Emission) || 1])
         .range([0, width]);
@@ -448,6 +456,30 @@ export function updateScatterPlot(data, onSelect) {
         .attr("cy", d => y(d.Delta || 0))
         .attr("r", d => radiusScale(d.Emission))
         .attr("fill", d => colorScale(d.Emission));
+
+    // Implementa zoom via scroll do mouse
+    svg.on("wheel", function(event) {
+        event.preventDefault();
+        
+        const wheelDelta = event.deltaY > 0 ? 0.8 : 1.2; // Zoom out ou in
+        zoomScaleX = Math.max(1, Math.min(3, zoomScaleX * wheelDelta)); // Entre 1x e 3x
+        zoomScaleY = Math.max(1, Math.min(3, zoomScaleY * wheelDelta));
+        
+        // Aplica a escala
+        const scaledWidth = width / zoomScaleX;
+        const scaledHeight = height / zoomScaleY;
+        const offsetX = (width - scaledWidth) / 2;
+        const offsetY = (height - scaledHeight) / 2;
+        
+        zoomLayer.attr("transform", `translate(${margin.left + offsetX},${margin.top + offsetY}) scale(${zoomScaleX}, ${zoomScaleY})`);
+        
+        // Ajusta stroke-width para não ficar grossa demais no zoom
+        zoomLayer.selectAll("line, path, circle")
+            .attr("stroke-width", d => {
+                const current = d3.select(this).attr("stroke-width");
+                return current ? parseFloat(current) / Math.max(zoomScaleX, zoomScaleY) : 0.5 / Math.max(zoomScaleX, zoomScaleY);
+            });
+    });
 }
 
 /**
