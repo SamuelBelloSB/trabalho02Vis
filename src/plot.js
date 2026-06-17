@@ -18,7 +18,7 @@ export function updateBarChart(data) {
     const width = (container.node()?.clientWidth || 400) - margin.left - margin.right;
     const height = (container.node()?.clientHeight || 400) - margin.top - margin.bottom;
 
-    // Limpa ou cria o SVG
+    // Reutiliza ou cria o SVG (criar uma única vez!)
     let svg = container.select("svg");
     if (svg.empty()) {
         svg = container.append("svg")
@@ -239,6 +239,7 @@ export function updateTimeSeriesChart(seriesList) {
     const width = (container.node()?.clientWidth || 400) - margin.left - margin.right;
     const height = (container.node()?.clientHeight || 350) - margin.top - margin.bottom;
 
+    // Reutiliza ou cria o SVG (criar uma única vez!)
     let svg = container.select("svg");
     if (svg.empty()) {
         svg = container.append("svg")
@@ -248,10 +249,6 @@ export function updateTimeSeriesChart(seriesList) {
     } else {
         svg = svg.select("g");
     }
-
-    // Estado do zoom
-    let zoomScale = 1;
-    let zoomTranslateY = 0;
 
     const allValues = seriesList.flatMap(s => s.values);
     if (!allValues.length) return;
@@ -265,6 +262,9 @@ export function updateTimeSeriesChart(seriesList) {
         .range([height, 0]);
 
     svg.selectAll(".axis").remove();
+    svg.selectAll(".axis-label").remove();
+    svg.selectAll(".legend").remove();
+    
     svg.append("g")
         .attr("class", "axis")
         .attr("transform", `translate(0,${height})`)
@@ -273,6 +273,27 @@ export function updateTimeSeriesChart(seriesList) {
     svg.append("g")
         .attr("class", "axis")
         .call(d3.axisLeft(y).ticks(5).tickFormat(d => d + "%"));
+    
+    // Adiciona label do eixo X
+    svg.append("text")
+        .attr("class", "axis-label")
+        .attr("x", width / 2)
+        .attr("y", height + 35)
+        .attr("text-anchor", "middle")
+        .style("font-size", "12px")
+        .style("fill", "#aaa")
+        .text("Anos");
+    
+    // Adiciona label do eixo Y
+    svg.append("text")
+        .attr("class", "axis-label")
+        .attr("transform", "rotate(-90)")
+        .attr("x", -height / 2)
+        .attr("y", -45)
+        .attr("text-anchor", "middle")
+        .style("font-size", "12px")
+        .style("fill", "#aaa")
+        .text("Emissão (%)")
 
     // Escala de cores para as áreas
     const colorScale = d3.scaleOrdinal()
@@ -284,20 +305,15 @@ export function updateTimeSeriesChart(seriesList) {
         .y0(height)
         .y1(d => y(d.Emission));
 
-    // Cria um defs para gradientes se não existir
-    let defs = svg.select("defs");
-    if (defs.empty()) {
-        defs = svg.append("defs");
-    }
-
-    // Remove gradientes antigos
-    defs.selectAll("linearGradient").remove();
-
+    // Cria um defs para gradientes
+    const defs = svg.append("defs");
+    
     // Cria gradientes para cada série
+    const gradientId = Date.now();
     seriesList.forEach((series, index) => {
         const color = colorScale(series.code);
         const gradient = defs.append("linearGradient")
-            .attr("id", `gradient-${series.code}`)
+            .attr("id", `gradient-${series.code}-${gradientId}`)
             .attr("x1", "0%")
             .attr("y1", "0%")
             .attr("x2", "0%")
@@ -319,7 +335,7 @@ export function updateTimeSeriesChart(seriesList) {
     paths.enter()
         .append("path")
         .attr("class", "area-path")
-        .attr("fill", d => `url(#gradient-${d.code})`)
+        .attr("fill", d => `url(#gradient-${d.code}-${gradientId})`)
         .attr("stroke", d => colorScale(d.code))
         .attr("stroke-width", 2)
         .attr("stroke-linejoin", "round")
@@ -327,6 +343,29 @@ export function updateTimeSeriesChart(seriesList) {
         .merge(paths)
         .transition().duration(750)
         .attr("d", d => area(d.values));
+    
+    // Adiciona legenda de cores
+    const legendX = width - 150;
+    const legendY = 10;
+    const legendSpacing = 18;
+    
+    const legend = svg.selectAll(".legend-entry").data(seriesList, d => d.code);
+    legend.exit().remove();
+    legend.enter()
+        .append("g")
+        .attr("class", "legend-entry")
+        .attr("transform", (d, i) => `translate(${legendX}, ${legendY + i * legendSpacing})`)
+        .append("rect")
+        .attr("width", 12)
+        .attr("height", 12)
+        .attr("fill", d => colorScale(d.code));
+    
+    svg.selectAll(".legend-entry").append("text")
+        .attr("x", 18)
+        .attr("y", 10)
+        .style("font-size", "11px")
+        .style("fill", "#aaa")
+        .text(d => d.entity);
 
     // Adiciona círculos para interatividade (Tooltip em pontos da área)
     const dotsGroup = svg.selectAll(".dots-group").data(seriesList, d => d.code);
@@ -379,6 +418,7 @@ export function updateScatterPlot(data, onSelect) {
     const width = (container.node()?.clientWidth || 400) - margin.left - margin.right;
     const height = (container.node()?.clientHeight || 350) - margin.top - margin.bottom;
 
+    // Reutiliza ou cria o SVG (criar uma única vez!)
     let svg = container.select("svg");
     if (svg.empty()) {
         svg = container.append("svg")
@@ -388,10 +428,6 @@ export function updateScatterPlot(data, onSelect) {
     } else {
         svg = svg.select("g");
     }
-
-    // Estado do zoom
-    let zoomScaleX = 1;
-    let zoomScaleY = 1;
 
     const x = d3.scaleLinear()
         .domain([0, d3.max(data, d => d.Emission) || 1])
@@ -411,6 +447,8 @@ export function updateScatterPlot(data, onSelect) {
 
     svg.selectAll(".axis").remove();
     svg.selectAll(".grid-line").remove();
+    svg.selectAll(".axis-label").remove();
+    svg.selectAll(".color-legend").remove();
 
     // Adiciona uma linha de referência no Y=0 para separar quem sobe de quem desce
     svg.append("line")
@@ -425,6 +463,86 @@ export function updateScatterPlot(data, onSelect) {
     svg.append("g").attr("class", "axis").attr("transform", `translate(0,${height})`)
         .call(d3.axisBottom(x).ticks(5).tickFormat(d => d + "%"));
     svg.append("g").attr("class", "axis").call(d3.axisLeft(y).ticks(5).tickFormat(d3.format("+.2f")));
+    
+    // Adiciona label do eixo X
+    svg.append("text")
+        .attr("class", "axis-label")
+        .attr("x", width / 2)
+        .attr("y", height + 35)
+        .attr("text-anchor", "middle")
+        .style("font-size", "12px")
+        .style("fill", "#aaa")
+        .text("Emissão Acumulada (%)");
+    
+    // Adiciona label do eixo Y
+    svg.append("text")
+        .attr("class", "axis-label")
+        .attr("transform", "rotate(-90)")
+        .attr("x", -height / 2)
+        .attr("y", -45)
+        .attr("text-anchor", "middle")
+        .style("font-size", "12px")
+        .style("fill", "#aaa")
+        .text("Tendência Anual");
+    
+    // Adiciona legenda de cores (escala contínua)
+    const legendWidth = 20;
+    const legendHeight = 100;
+    const legendX = width - 30;
+    const legendY = 20;
+    
+    // Cria um gradiente para a legenda
+    let defs = svg.select("defs");
+    if (defs.empty()) {
+        defs = svg.append("defs");
+    }
+    
+    const colorLegendGradient = defs.append("linearGradient")
+        .attr("id", "color-legend-gradient")
+        .attr("x1", "0%")
+        .attr("y1", "0%")
+        .attr("x2", "0%")
+        .attr("y2", "100%");
+    
+    colorLegendGradient.append("stop").attr("offset", "0%").attr("stop-color", "#e41a1c");
+    colorLegendGradient.append("stop").attr("offset", "100%").attr("stop-color", "#ffcccc");
+    
+    // Desenha o retângulo da legenda com gradiente
+    svg.append("rect")
+        .attr("class", "color-legend")
+        .attr("x", legendX)
+        .attr("y", legendY)
+        .attr("width", legendWidth)
+        .attr("height", legendHeight)
+        .attr("fill", "url(#color-legend-gradient)")
+        .attr("stroke", "#666")
+        .attr("stroke-width", 1);
+    
+    // Adiciona labels para a legenda
+    svg.append("text")
+        .attr("class", "color-legend")
+        .attr("x", legendX + legendWidth + 8)
+        .attr("y", legendY + 5)
+        .style("font-size", "10px")
+        .style("fill", "#aaa")
+        .text(d3.max(data, d => d.Emission).toFixed(1) + "%");
+    
+    svg.append("text")
+        .attr("class", "color-legend")
+        .attr("x", legendX + legendWidth + 8)
+        .attr("y", legendY + legendHeight + 3)
+        .style("font-size", "10px")
+        .style("fill", "#aaa")
+        .text("0%");
+    
+    svg.append("text")
+        .attr("class", "color-legend")
+        .attr("x", legendX + legendWidth + 8)
+        .attr("y", legendY - 5)
+        .style("font-size", "10px")
+        .style("font-weight", "bold")
+        .style("fill", "#bbb")
+        .text("Emissão");
 
     const dots = svg.selectAll(".dot").data(data, d => d.Code);
     dots.exit().remove();
@@ -456,30 +574,6 @@ export function updateScatterPlot(data, onSelect) {
         .attr("cy", d => y(d.Delta || 0))
         .attr("r", d => radiusScale(d.Emission))
         .attr("fill", d => colorScale(d.Emission));
-
-    // Implementa zoom via scroll do mouse
-    svg.on("wheel", function(event) {
-        event.preventDefault();
-        
-        const wheelDelta = event.deltaY > 0 ? 0.8 : 1.2; // Zoom out ou in
-        zoomScaleX = Math.max(1, Math.min(3, zoomScaleX * wheelDelta)); // Entre 1x e 3x
-        zoomScaleY = Math.max(1, Math.min(3, zoomScaleY * wheelDelta));
-        
-        // Aplica a escala
-        const scaledWidth = width / zoomScaleX;
-        const scaledHeight = height / zoomScaleY;
-        const offsetX = (width - scaledWidth) / 2;
-        const offsetY = (height - scaledHeight) / 2;
-        
-        zoomLayer.attr("transform", `translate(${margin.left + offsetX},${margin.top + offsetY}) scale(${zoomScaleX}, ${zoomScaleY})`);
-        
-        // Ajusta stroke-width para não ficar grossa demais no zoom
-        zoomLayer.selectAll("line, path, circle")
-            .attr("stroke-width", d => {
-                const current = d3.select(this).attr("stroke-width");
-                return current ? parseFloat(current) / Math.max(zoomScaleX, zoomScaleY) : 0.5 / Math.max(zoomScaleX, zoomScaleY);
-            });
-    });
 }
 
 /**
@@ -493,6 +587,7 @@ export function updateEnergyEfficiencyChart(data) {
     const width = (container.node()?.clientWidth || 400) - margin.left - margin.right;
     const height = (container.node()?.clientHeight || 350) - margin.top - margin.bottom;
 
+    // Reutiliza ou cria o SVG (criar uma única vez!)
     let svg = container.select("svg");
     if (svg.empty()) {
         svg = container.append("svg")

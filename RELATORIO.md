@@ -58,19 +58,19 @@ O sistema foi projetado para suportar três famílias de tarefas, descritas usan
 
 - **Ação:** Comparar  
 - **Alvo:** Distribuição (atributo `co2` por país em um ano)  
-- **Rationale:** O usuário precisa identificar rapidamente *quais* países dominam as emissões globais em um determinado ano. Uma visão geográfica codificada por cor (Choropleth) é o canal mais intuitivo para comunicar distribuição espacial.
+- **Justificativa:** O usuário consegue identificar rapidamente *quais* países dominam as emissões globais em um determinado ano. Uma visão geográfica codificada por escala de cor é o canal mais intuitivo para comunicar distribuição espacial.
 
 ### 2.2 Tarefa T2 — Explorar trajetória temporal de um país (WHEN)
 
 - **Ação:** Identificar + Comparar  
 - **Alvo:** Tendência (série temporal de um país vs. média mundial)  
-- **Rationale:** A seleção de um país no mapa dispara uma visão de detalhe com a série histórica 1900–2022 do país, sobreposta à média mundial (linha de referência). Isso implementa o padrão **Overview + Detail on Demand** de Shneiderman: o mapa fornece o overview, o gráfico de linha provê o detalhe temporal.
+- **Justificativa:** A seleção de um país no mapa dispara uma visão de detalhe com a série histórica 1900–2022 do país, sobreposta à média mundial (linha de referência). Isso implementa o padrão **Overview + Detail on Demand** de Shneiderman: o mapa fornece o overview, o gráfico de linha provê o detalhe temporal.
 
 ### 2.3 Tarefa T3 — Correlacionar emissões com desenvolvimento econômico (WHAT)
 
 - **Ação:** Descobrir (discover) + Correlacionar  
 - **Alvo:** Distribuição bivariada (CO₂ per capita × PIB per capita)  
-- **Rationale:** A hipótese central da literatura climática é que emissões e riqueza estão historicamente correlacionadas, mas que países ricos já começam a desacoplar. O scatter plot log×log expõe essa estrutura. O tamanho dos pontos codifica população (canal quantitativo de área), e a cor codifica região (canal nominal de matiz).
+- **Justificativa:** A hipótese central da literatura climática é que emissões e riqueza estão historicamente correlacionadas, mas que países ricos já começam a desacoplar. O scatter plot log×log expõe essa estrutura. O tamanho dos pontos codifica população (canal quantitativo de área), e a cor codifica região (canal nominal de matiz).
 
 ### 2.4 Necessidade de Visões Coordenadas
 
@@ -88,15 +88,15 @@ Essa narrativa multi-passo só emerge através da **coordenação de visões com
 
 ### 3.1 Eficácia de Canais Visuais (Munzner)
 
-| Atributo | Canal | Ranking Munzner | Justificativa |
-|---|---|---|---|
-| CO₂ (mapa) | Matiz + Luminosidade (sequencial) | 4º (quantitativo) | Escala logarítmica com ramp monocromática. Log justificado pela distribuição de cauda longa (China/EUA >> países pequenos) |
-| Ano (trend) | Posição X | 1º (quantitativo) | Canal mais eficaz para ordenação temporal |
-| Emissão (trend) | Posição Y | 1º (quantitativo) | Comparação de magnitude da série temporal |
-| CO₂/cap (scatter) | Posição Y (log) | 1º | Eixo primário de análise |
-| GDP/cap (scatter) | Posição X (log) | 1º | Variável independente (desenvolvimento) |
-| População (scatter) | Área (raiz quadrada) | 3º | Canal de quantidade — `scaleSqrt` garante proporcionalidade de área |
-| Continente (scatter) | Matiz | 1º (categórico) | Paleta com 6 matizes distinguíveis perceptivamente |
+| Atributo | Canal | Justificativa |
+|---|---|---|
+| CO₂ (mapa) | Matiz + Luminosidade (sequencial) | Perceber pela escala de cauda longa países grande emissão (China/EUA >> países pequenos) |
+| Ano (trend) | Posição X | Canal mais eficaz para ordenação temporal |
+| Emissão (trend) | Posição Y | Comparação de magnitude da série temporal |
+| CO₂/cap (scatter) | Posição Y (log) | Eixo de crescimento |
+| GDP/cap (scatter) | Posição X (log) | Eixo acumulo |
+| População (scatter) | Área (raiz quadrada) | Canal de quantidade — `scaleSqrt` garante proporcionalidade de área |
+| Area | Matiz Cor | Paleta com cores distinguíveis perceptivamente |
 
 **Escala logarítmica no scatter:** Justificada pelo range de GDP/capita (centenas a >100k USD) e CO₂/capita (0.1 a ~20 t). Escalas lineares colapsariam 80% dos países em clusters ilegíveis.
 
@@ -168,7 +168,6 @@ D3 `join()` com funções `enter/update/exit` separadas garante que apenas os el
 
 - Queremos correlacionar os dados de emissões de CO₂ com os dados sobre eficiência energética. Mas devido a grande dispariedade dos dados em questão, não conseguimos em tempo hábil solucionar esse problema com os datasets que tínhamos disponíveis.
 
-- Queremos correlacionar os dados de emissões de CO₂ com os dados sobre Taxa Geométrica de Crescimento Anual (TGCA) e renda per capita. Mas também não encontramos datasets sobre informações globais e de boa qualidade.
 
 ---
 
