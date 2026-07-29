@@ -167,22 +167,17 @@ async function initDatabase() {
         const db = await loadDb();
         conn = await db.connect();
         
-        // Carregamento dos Datasets
-        // ATENÇÃO AQUI: Adicionado o './' para caminhos relativos
-        const [resCo2, resEnergy] = await Promise.all([
-            fetch('./share-of-cumulative-co2.csv'),
-            fetch('./primary-energy-consumption.csv') // Dataset de Energia
-        ]);
+        // 1. Carregamento Obrigatório do Dataset Principal (CO2)
+        // Se o arquivo estiver na raiz: './share-of-cumulative-co2.csv'
+        // Se mantiver em public: './public/share-of-cumulative-co2.csv'
+        const resCo2 = await fetch('./share-of-cumulative-co2.csv');
 
-        if (!resCo2.ok || !resEnergy.ok) throw new Error("Falha ao carregar datasets CSV.");
+        if (!resCo2.ok) throw new Error("Arquivo share-of-cumulative-co2.csv não encontrado!");
 
         const bufferCo2 = new Uint8Array(await resCo2.arrayBuffer());
-        const bufferEnergy = new Uint8Array(await resEnergy.arrayBuffer());
-        
         await db.registerFileBuffer('share-of-cumulative-co2.csv', bufferCo2);
-        await db.registerFileBuffer('primary-energy-consumption.csv', bufferEnergy);
 
-        // 1. Criar tabelas base de emissões (Obrigatório)
+        // Criar tabelas base de emissões
         await conn.query(`
             CREATE TABLE raw_emissions AS SELECT * FROM read_csv_auto('share-of-cumulative-co2.csv');
             
@@ -197,32 +192,38 @@ async function initDatabase() {
             WHERE Code IS NOT NULL AND LENGTH(Code) = 3
             ORDER BY Year ASC;
 
-            -- Tabela otimizada para cruzamentos futuros
             CREATE TABLE energy_co2_stats AS 
             SELECT * FROM emissions;
         `);
 
-        // 2. Tentar carregar dados de energia (Opcional - Não quebra o dash se falhar)
+        // 2. Carregamento Opcional do Dataset de Energia
         try {
-            await conn.query(`
-                CREATE TABLE raw_energy AS SELECT * FROM read_csv_auto('primary-energy-consumption.csv', ignore_errors=true, sample_size=-1);
-                
-                -- Tabela de relação Energia vs CO2
-                CREATE TABLE energy_relationship AS
-                SELECT 
-                    e.Entity, 
-                    e.Code, 
-                    e.Year, 
-                    e.Emission as CO2_Share,
-                    en."Primary energy consumption (TWh)" as Energy_TWh,
-                    (e.Emission / NULLIF(en."Primary energy consumption (TWh)", 0)) as Carbon_Intensity
-                FROM emissions e
-                JOIN raw_energy en ON e.Code = en.Code AND e.Year = en.Year
-                WHERE e.Year >= 1965 AND en."Primary energy consumption (TWh)" IS NOT NULL;
-            `);
-            console.log("Dados de energia integrados com sucesso.");
-        } catch (err) {
-            console.warn("Aviso: Falha ao integrar dados de energia (csv não encontrado ou inválido).", err);
+            const resEnergy = await fetch('./primary-energy-consumption.csv');
+            if (resEnergy.ok) {
+                const bufferEnergy = new Uint8Array(await resEnergy.arrayBuffer());
+                await db.registerFileBuffer('primary-energy-consumption.csv', bufferEnergy);
+
+                await conn.query(`
+                    CREATE TABLE raw_energy AS SELECT * FROM read_csv_auto('primary-energy-consumption.csv', ignore_errors=true, sample_size=-1);
+                    
+                    CREATE TABLE energy_relationship AS
+                    SELECT 
+                        e.Entity, 
+                        e.Code, 
+                        e.Year, 
+                        e.Emission as CO2_Share,
+                        en."Primary energy consumption (TWh)" as Energy_TWh,
+                        (e.Emission / NULLIF(en."Primary energy consumption (TWh)", 0)) as Carbon_Intensity
+                    FROM emissions e
+                    JOIN raw_energy en ON e.Code = en.Code AND e.Year = en.Year
+                    WHERE e.Year >= 1965 AND en."Primary energy consumption (TWh)" IS NOT NULL;
+                `);
+                console.log("Dados de energia integrados com sucesso.");
+            } else {
+                console.warn("Aviso: primary-energy-consumption.csv não encontrado. Gráficos de energia ficarão ocultos.");
+            }
+        } catch (errEnergy) {
+            console.warn("Aviso: Falha ao integrar dados de energia.", errEnergy);
         }
         
         // Criar índices para otimizar queries
@@ -243,7 +244,6 @@ async function initDatabase() {
         console.log("Banco de dados e estado inicial prontos.");
     } catch (e) {
         console.error("Erro na inicialização:", e);
-        // Mostrar erro ao utilizador
         const loader = document.getElementById('loading-indicator');
         if (loader) {
             loader.innerHTML = `
