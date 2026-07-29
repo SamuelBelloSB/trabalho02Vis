@@ -46,7 +46,7 @@ import*as e from"https://cdn.jsdelivr.net/npm/@duckdb/duckdb-wasm@1.28.0/+esm";i
         WHERE Code = '${t}'
         ORDER BY Year ASC;
     `)).toArray().map(e=>e.toJSON());return n.seriesData.set(r,a),a}async function g(e){let t=e.map(e=>h(e));return(await Promise.all(t)).map(e=>({code:e.length>0?e[0].Code:null,entity:e.length>0?e[0].Entity:e[0]?.Code||`Sem dados`,values:e.map(e=>({Year:e.Year,Emission:e.Emission}))}))}function _(e,t){let n=document.createElement(`a`);n.href=e,n.download=t,document.body.appendChild(n),n.click(),document.body.removeChild(n)}function v(e,t){if(!e||!e.length){alert(`Nenhum dado disponível para exportar.`);return}let n=Object.keys(e[0]),r=e.map(e=>n.map(t=>{let n=e[t];return typeof n==`string`?`"${n.replace(/"/g,`""`)}"`:n}).join(`,`)),i=[n.join(`,`),...r].join(`
-`),a=new Blob([i],{type:`text/csv;charset=utf-8;`}),o=URL.createObjectURL(a);_(o,t),URL.revokeObjectURL(o)}async function y(){let e=document.querySelector(`#line-chart-container svg`);if(!e){alert(`Gráfico não disponível para exportar.`);return}let n=new XMLSerializer().serializeToString(e.cloneNode(!0)),r=new Blob([n],{type:`image/svg+xml;charset=utf-8`}),i=URL.createObjectURL(r),a=new Image;a.onload=()=>{let n=document.createElement(`canvas`);n.width=e.viewBox.baseVal.width||e.clientWidth,n.height=e.viewBox.baseVal.height||e.clientHeight;let r=n.getContext(`2d`);r.fillStyle=`#121212`,r.fillRect(0,0,n.width,n.height),r.drawImage(a,0,0),URL.revokeObjectURL(i),n.toBlob(e=>{if(e){let n=URL.createObjectURL(e);_(n,`line-chart-${t.selectedYear}.png`),URL.revokeObjectURL(n)}},`image/png`)},a.onerror=e=>{console.error(`Erro ao converter SVG para PNG`,e),alert(`Não foi possível exportar o PNG.`)},a.src=i}async function b(){try{let n=await a();e=await n.connect();let[r,i]=await Promise.all([fetch(`./share-of-cumulative-co2.csv`),fetch(`./primary-energy-consumption.csv`)]);if(!r.ok||!i.ok)throw Error(`Falha ao carregar datasets CSV.`);let o=new Uint8Array(await r.arrayBuffer()),s=new Uint8Array(await i.arrayBuffer());await n.registerFileBuffer(`share-of-cumulative-co2.csv`,o),await n.registerFileBuffer(`primary-energy-consumption.csv`,s),await e.query(`
+`),a=new Blob([i],{type:`text/csv;charset=utf-8;`}),o=URL.createObjectURL(a);_(o,t),URL.revokeObjectURL(o)}async function y(){let e=document.querySelector(`#line-chart-container svg`);if(!e){alert(`Gráfico não disponível para exportar.`);return}let n=new XMLSerializer().serializeToString(e.cloneNode(!0)),r=new Blob([n],{type:`image/svg+xml;charset=utf-8`}),i=URL.createObjectURL(r),a=new Image;a.onload=()=>{let n=document.createElement(`canvas`);n.width=e.viewBox.baseVal.width||e.clientWidth,n.height=e.viewBox.baseVal.height||e.clientHeight;let r=n.getContext(`2d`);r.fillStyle=`#121212`,r.fillRect(0,0,n.width,n.height),r.drawImage(a,0,0),URL.revokeObjectURL(i),n.toBlob(e=>{if(e){let n=URL.createObjectURL(e);_(n,`line-chart-${t.selectedYear}.png`),URL.revokeObjectURL(n)}},`image/png`)},a.onerror=e=>{console.error(`Erro ao converter SVG para PNG`,e),alert(`Não foi possível exportar o PNG.`)},a.src=i}async function b(){try{let n=await a();e=await n.connect();let r=await fetch(`./share-of-cumulative-co2.csv`);if(!r.ok)throw Error(`Arquivo share-of-cumulative-co2.csv não encontrado!`);let i=new Uint8Array(await r.arrayBuffer());await n.registerFileBuffer(`share-of-cumulative-co2.csv`,i),await e.query(`
             CREATE TABLE raw_emissions AS SELECT * FROM read_csv_auto('share-of-cumulative-co2.csv');
             
             CREATE TABLE emissions AS
@@ -60,29 +60,27 @@ import*as e from"https://cdn.jsdelivr.net/npm/@duckdb/duckdb-wasm@1.28.0/+esm";i
             WHERE Code IS NOT NULL AND LENGTH(Code) = 3
             ORDER BY Year ASC;
 
-            -- Tabela otimizada para cruzamentos futuros
             CREATE TABLE energy_co2_stats AS 
             SELECT * FROM emissions;
-        `);try{await e.query(`
-                CREATE TABLE raw_energy AS SELECT * FROM read_csv_auto('primary-energy-consumption.csv', ignore_errors=true, sample_size=-1);
-                
-                -- Tabela de relação Energia vs CO2
-                CREATE TABLE energy_relationship AS
-                SELECT 
-                    e.Entity, 
-                    e.Code, 
-                    e.Year, 
-                    e.Emission as CO2_Share,
-                    en."Primary energy consumption (TWh)" as Energy_TWh,
-                    (e.Emission / NULLIF(en."Primary energy consumption (TWh)", 0)) as Carbon_Intensity
-                FROM emissions e
-                JOIN raw_energy en ON e.Code = en.Code AND e.Year = en.Year
-                WHERE e.Year >= 1965 AND en."Primary energy consumption (TWh)" IS NOT NULL;
-            `),console.log(`Dados de energia integrados com sucesso.`)}catch(e){console.warn(`Aviso: Falha ao integrar dados de energia (csv não encontrado ou inválido).`,e)}await e.query(`
+        `);try{let t=await fetch(`./primary-energy-consumption.csv`);if(t.ok){let r=new Uint8Array(await t.arrayBuffer());await n.registerFileBuffer(`primary-energy-consumption.csv`,r),await e.query(`
+                    CREATE TABLE raw_energy AS SELECT * FROM read_csv_auto('primary-energy-consumption.csv', ignore_errors=true, sample_size=-1);
+                    
+                    CREATE TABLE energy_relationship AS
+                    SELECT 
+                        e.Entity, 
+                        e.Code, 
+                        e.Year, 
+                        e.Emission as CO2_Share,
+                        en."Primary energy consumption (TWh)" as Energy_TWh,
+                        (e.Emission / NULLIF(en."Primary energy consumption (TWh)", 0)) as Carbon_Intensity
+                    FROM emissions e
+                    JOIN raw_energy en ON e.Code = en.Code AND e.Year = en.Year
+                    WHERE e.Year >= 1965 AND en."Primary energy consumption (TWh)" IS NOT NULL;
+                `),console.log(`Dados de energia integrados com sucesso.`)}else console.warn(`Aviso: primary-energy-consumption.csv não encontrado. Gráficos de energia ficarão ocultos.`)}catch(e){console.warn(`Aviso: Falha ao integrar dados de energia.`,e)}await e.query(`
             CREATE INDEX IF NOT EXISTS idx_emissions_code ON emissions(Code);
             CREATE INDEX IF NOT EXISTS idx_emissions_year ON emissions(Year);
             CREATE INDEX IF NOT EXISTS idx_emissions_code_year ON emissions(Code, Year);
-        `);let c=(await e.query(`SELECT MAX(Year) as maxYear FROM emissions`)).toArray();c.length>0&&(t.maxYear=c[0].toJSON().maxYear,t.selectedYear=t.maxYear,C()),console.log(`Banco de dados e estado inicial prontos.`)}catch(e){console.error(`Erro na inicialização:`,e);let t=document.getElementById(`loading-indicator`);t&&(t.innerHTML=`
+        `);let o=(await e.query(`SELECT MAX(Year) as maxYear FROM emissions`)).toArray();o.length>0&&(t.maxYear=o[0].toJSON().maxYear,t.selectedYear=t.maxYear,C()),console.log(`Banco de dados e estado inicial prontos.`)}catch(e){console.error(`Erro na inicialização:`,e);let t=document.getElementById(`loading-indicator`);t&&(t.innerHTML=`
                 <div class="loading-container">
                     <h2 style="color: #f44;">Erro ao Carregar</h2>
                     <p>${e.message}</p>
