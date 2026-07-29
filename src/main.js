@@ -168,10 +168,10 @@ async function initDatabase() {
         conn = await db.connect();
         
         // Carregamento dos Datasets
-        // Certifique-se de que os nomes dos arquivos e caminhos coincidem com a sua estrutura de pastas
+        // ATENÇÃO AQUI: Adicionado o './' para caminhos relativos
         const [resCo2, resEnergy] = await Promise.all([
-            fetch('share-of-cumulative-co2.csv'),
-            fetch('primary-energy-consumption.csv') // Dataset de Energia
+            fetch('./share-of-cumulative-co2.csv'),
+            fetch('./primary-energy-consumption.csv') // Dataset de Energia
         ]);
 
         if (!resCo2.ok || !resEnergy.ok) throw new Error("Falha ao carregar datasets CSV.");

@@ -3,77 +3,126 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <meta name="theme-color" content="#121212">
-    <link rel="manifest" href="/manifest.json">
-    <title>Visualização de Emissões CO2</title>
-  <script type="module" crossorigin src="/assets/index-BFWQCfCe.js"></script>
-  <link rel="stylesheet" crossorigin href="/assets/index-D27Fppyp.css">
+    <title>Visualização de Emissões CO2</title>
+    <link rel="manifest" href="/assets/manifest-BM9GjWpw.json">
+    <link rel="icon" href="data:,">
+    <style>
+        body { font-family: 'Inter', system-ui, sans-serif; margin: 0; background: #121212; color: #e0e0e0; display: flex; flex-direction: column; min-height: 100vh; }
+        .header { padding: 1rem 2rem; background: #252525; border-bottom: 1px solid #333; display: flex; justify-content: space-between; align-items: center; }
+        .main-layout { display: flex; flex: 1; overflow: hidden; flex-direction: row; }
+        .sidebar { flex: 0 0 300px; width: 300px; background: #1e1e1e; border-left: 1px solid #333; padding: 20px; display: flex; flex-direction: column; gap: 20px; overflow-y: auto; box-shadow: -2px 0 10px rgba(0,0,0,0.3); order: 2; }
+        .dashboard-grid { display: grid; grid-template-columns: 1fr 1fr; grid-template-rows: 1fr 1fr; grid-auto-rows: 1fr; gap: 20px; padding: 20px; flex-grow: 1; overflow-y: auto; }
+        .card { background: #252525; border-radius: 8px; border: 1px solid #333; padding: 15px; display: flex; flex-direction: column; position: relative; }
+        #chart-container { grid-column: span 1; }
+        input[type="range"] { accent-color: #e41a1c; width: 100%; cursor: pointer; }
+        button { background: #e41a1c; border: none; color: white; padding: 5px 15px; border-radius: 15px; cursor: pointer; font-weight: bold; transition: opacity 0.2s; }
+        button:hover { opacity: 0.8; }
+        .btn-secondary { background: #444; margin-top: 5px; }
+        .sidebar-section.sticky { position: sticky; top: -20px; background: #1e1e1e; z-index: 10; padding-top: 20px; padding-bottom: 15px; margin-top: -20px; border-bottom: 1px solid #333; }
+        .sidebar-section { display: flex; flex-direction: column; gap: 10px; }
+        .sidebar-title { font-size: 0.7rem; text-transform: uppercase; color: #777; font-weight: bold; letter-spacing: 1px; border-bottom: 1px solid #333; padding-bottom: 5px; }
+        select { background: #2a2a2a; color: white; border: 1px solid #444; border-radius: 4px; padding: 8px; height: 150px; font-family: inherit; }
+        .selected-countries-list { 
+            display: flex; 
+            flex-wrap: wrap; 
+            gap: 6px; 
+            margin-bottom: 5px; 
+            min-height: 24px; 
+            max-height: 120px; 
+            overflow-y: auto; 
+            padding: 8px; 
+            background: rgba(0,0,0,0.2); 
+            border-radius: 4px; 
+        }
+        .selected-countries-list::-webkit-scrollbar { width: 4px; }
+        .selected-countries-list::-webkit-scrollbar-thumb { background: #444; border-radius: 10px; }
+        .country-pill { background: #333; border: 1px solid #444; color: #eee; padding: 4px 10px; border-radius: 16px; font-size: 0.7rem; display: flex; align-items: center; gap: 6px; cursor: pointer; transition: all 0.2s; }
+        .country-pill:hover { background: #444; border-color: #e41a1c; }
+        .search-box { background: #2a2a2a; border: 1px solid #444; color: white; padding: 8px; border-radius: 4px; font-size: 0.8rem; }
+        .map-tooltip { position: absolute; background: rgba(0,0,0,0.9); border: 1px solid #444; padding: 8px; border-radius: 4px; pointer-events: none; z-index: 1000; font-size: 12px; }
+        h1 { margin: 0; font-size: 1.2rem; font-weight: 500; }
+        .card-title { font-size: 0.85rem; text-transform: uppercase; color: #aaa; margin-bottom: 15px; letter-spacing: 1px; border-left: 3px solid #e41a1c; padding-left: 10px; }
+        svg { width: 100%; height: 100%; }
+        .legend-container { margin-top: auto; padding-top: 10px; }
+        .axis-label { font-size: 11px; fill: #888; }
+        #countryName[title]:not([title=""]) { cursor: help; color: #e41a1c; transition: opacity 0.2s; }
+        #loading-indicator { position: fixed; top: 0; left: 0; right: 0; bottom: 0; background: rgba(18,18,18,0.9); z-index: 2000; display: flex; justify-content: center; align-items: center; font-weight: bold; }
+    </style>
+  <script type="module" crossorigin src="/assets/index-WzHYxwui.js"></script>
 </head>
 <body>
-    <div id="loading-indicator" class="loading-overlay">
-        <div class="loading-container">
-            <div class="spinner"></div>
-            <p>Carregando dados globais...</p>
-        </div>
-    </div>
-
     <div class="header">
         <h1>Monitor de Emissões Globais (1750-2021)</h1>
-        <div class="controls">
-            <button id="playButton">PLAY</button>
-            <label for="yearSlider">Ano</label>
-            <input type="range" id="yearSlider" min="1750" max="2021" value="2021">
-            <span id="yearValue" class="year-value">2021</span>
+    </div>
+
+    <div id="loading-indicator">
+        <div style="text-align: center;">
+            <div style="font-size: 2rem; color: #e41a1c; margin-bottom: 10px;">⚡</div>
+            Carregando Base de Dados...
         </div>
     </div>
 
-    <div class="app-layout">
-        <main class="dashboard-main">
-            <div class="dashboard-grid">
-                <div id="chart-container" class="card">
-                    <div class="card-title">Distribuição Espacial (Where)</div>
-                    <div id="map-legend" class="legend-container"></div>
-                </div>
-                <div id="scatter-plot-container" class="card">
-                    <div class="card-title">Correlação: Acumulado vs. Tendência Atual (What)</div>
-                </div>
-                <div id="line-chart-container" class="card">
-                    <div class="card-title">Evolução Temporal: <span id="countryName">USA</span> (When)</div>
-                </div>
-                <div id="bar-chart-container" class="card">
-                    <div class="card-title">Ranking de Impacto (Who)</div>
+    <div class="main-layout">
+        <div class="dashboard-grid">
+            <div id="chart-container" class="card">
+                <div class="card-title">Distribuição Espacial (Where)</div>
+                <div id="map-legend" class="legend-container"></div>
+            </div>
+            <div id="scatter-plot-container" class="card">
+                <div class="card-title">Correlação: Acumulado vs. Tendência Atual (What)</div>
+            </div>
+            <div id="line-chart-container" class="card">
+                <div class="card-title">Evolução Temporal: <span id="countryName">USA</span> (When)</div>
+            </div>
+            <div id="bar-chart-container" class="card">
+                <div class="card-title">Ranking de Impacto (Who)</div>
+            </div>
+            <div id="energy-efficiency-container" class="card">
+                <div class="card-title">Eficiência Energética: CO₂ vs Consumo (Insight)</div>
+            </div>
+        </div>
+
+        <div class="sidebar">
+            <div class="sidebar-section sticky">
+                <div class="sidebar-title">Controle Temporal</div>
+                <div style="display: flex; flex-direction: column; gap: 10px; background: #252525; padding: 15px; border-radius: 8px; border: 1px solid #333;">
+                    <button id="playButton" style="width: 100%; padding: 10px;">PLAY</button>
+                    <div style="display: flex; justify-content: space-between; align-items: center; margin-top: 5px;">
+                        <label for="yearSlider" style="font-size: 0.8rem; color: #aaa;">Ano Selecionado:</label>
+                        <span id="yearValue" style="font-weight: bold; color: #e41a1c; font-size: 1.1rem;">2021</span>
+                    </div>
+                    <input type="range" id="yearSlider" min="1750" max="2021" value="2021">
                 </div>
             </div>
-        </main>
 
-        <aside class="sidebar">
-            <section class="sidebar-card">
-                <div class="filter-group">
-                    <label for="countrySelect">Comparação multi-país</label>
-                    <select id="countrySelect" multiple aria-label="Selecionar países" title="Segure Ctrl/Cmd para múltiplas seleções"></select>
-                    <button id="applyCountrySelection">Aplicar seleção</button>
+            <div class="sidebar-section">
+                <div class="sidebar-title">Comparação de Países</div>
+                <div id="selectedCountriesList" class="selected-countries-list"></div>
+                <input type="text" id="countrySearch" class="search-box" placeholder="Buscar país...">
+                <select id="countrySelect" multiple></select>
+                <div style="display: flex; gap: 10px;">
+                    <button id="applyCountrySelection" style="flex: 1;">Adicionar</button>
+                    <button id="clearSelectionBtn" class="btn-secondary" style="flex: 1;">Limpar Tudo</button>
                 </div>
-            </section>
-            <section class="sidebar-card">
-                <div class="filter-group">
-                    <label>Presets de ano</label>
-                    <div class="preset-buttons">
-                        <button type="button" data-preset-year="1800">1800</button>
-                        <button type="button" data-preset-year="1950">1950</button>
-                        <button type="button" data-preset-year="2000">2000</button>
-                        <button type="button" data-preset-year="2021">2021</button>
-                    </div>
+            </div>
+
+            <div class="sidebar-section">
+                <div class="sidebar-title">Exportar Insights</div>
+                <button id="exportCsvBtn" class="btn-secondary">Série Temporal (CSV)</button>
+                <button id="exportYearCsvBtn" class="btn-secondary">Ranking Atual (CSV)</button>
+                <button id="exportPngBtn" class="btn-secondary">Salvar Evolução (PNG)</button>
+            </div>
+
+            <div class="sidebar-section">
+                <div class="sidebar-title">Atalhos Históricos</div>
+                <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 5px;">
+                    <button data-preset-year="1900">1900</button>
+                    <button data-preset-year="1950">1950</button>
+                    <button data-preset-year="1990">1990</button>
+                    <button data-preset-year="2021">Hoje</button>
                 </div>
-            </section>
-            <section class="sidebar-card">
-                <div class="filter-group">
-                    <label>Exportações</label>
-                    <button id="exportPngBtn" type="button">Exportar PNG</button>
-                    <button id="exportCsvBtn" type="button">Exportar CSV séries</button>
-                    <button id="exportYearCsvBtn" type="button">Exportar CSV ano</button>
-                </div>
-            </section>
-        </aside>
+            </div>
+        </div>
     </div>
 
 </body>

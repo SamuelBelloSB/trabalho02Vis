@@ -1,5 +1,5 @@
-import * as d3 from 'https://cdn.skypack.dev/d3@7';
-import * as topojson from 'https://cdn.skypack.dev/topojson-client@3';
+import * as d3 from 'https://cdn.jsdelivr.net/npm/d3@7/+esm';
+import * as topojson from 'https://cdn.jsdelivr.net/npm/topojson-client@3/+esm';
 
 // Tooltip único para a aplicação, utilizando a classe já definida no seu CSS
 const tooltip = d3.select("body").append("div")
